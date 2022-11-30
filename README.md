@@ -9,6 +9,17 @@ To incentivize running a maker the taker pays a small fee to the maker for their
 ---
 ## This is Alpha level software with many things that need to be changed, added, improved and tested, please do not use on mainnet.
 ---
+## Getting started
+
+### Run Maker 
+```
+cargo r -- --rpc-url "<url oof bitcoin core RPC API>" run-maker
+```
+### Run Taker
+```
+cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amount <Send amount> --number-of-makers <number of makers>
+
+```
 
 
 ### Known Issues
