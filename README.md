@@ -1,7 +1,7 @@
 # nostrdizer
 
 
-A [Nostr](https://github.com/nostr-protocol/nostr) Client build to create Bitcoin Collaborative transactions, known as Coinjoins. 
+A [Nostr](https://github.com/nostr-protocol/nostr) client built to create Bitcoin Collaborative transactions, known as Coinjoins. 
 Based on the [Joinmarket](https://github.com/JoinMarket-Org/joinmarket-clientserver) model where there is a maker and a taker. 
 A maker is always online available to take part in the transaction, and a taker who chooses when and what size of transaction to create.
 To incentivize running a maker the taker pays a small fee to the maker for their service. (Not yet implemented)
