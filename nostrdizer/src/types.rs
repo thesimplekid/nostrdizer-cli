@@ -64,3 +64,10 @@ pub struct MakerConfig {
     pub maxsize: Option<u64>,
     pub will_broadcast: bool,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BitcoinCoreCreditals {
+    pub rpc_url: String,
+    pub rpc_username: String,
+    pub rpc_password: String,
+}

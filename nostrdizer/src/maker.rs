@@ -1,8 +1,8 @@
 use crate::{
     errors::Error,
     types::{
-        FillOffer, MakerConfig, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages,
-        Offer, Psbt,
+        BitcoinCoreCreditals, FillOffer, MakerConfig, NostrdizerMessage, NostrdizerMessageKind,
+        NostrdizerMessages, Offer, Psbt,
     },
     utils,
 };
@@ -24,9 +24,19 @@ use log::{debug, info};
 
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use rand::{thread_rng, Rng};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Config {
+    pub abs_fee: u64,
+    pub rel_fee: f32,
+    pub minsize: u64,
+    pub maxsize: Option<u64>,
+    pub will_broadcast: bool,
+}
 
 pub struct Maker {
     pub identity: Identity,
@@ -40,21 +50,24 @@ impl Maker {
         priv_key: &str,
         relay_urls: Vec<&str>,
         config: &mut MakerConfig,
-        rpc_url: &str,
+        bitcoin_core_creds: BitcoinCoreCreditals,
     ) -> Result<Self, Error> {
         let identity = Identity::from_str(priv_key).unwrap();
 
         let nostr_client = NostrClient::new(relay_urls).unwrap();
 
         let rpc_client = RPCClient::new(
-            rpc_url,
-            Auth::UserPass("bitcoin".to_string(), "password".to_string()),
+            &bitcoin_core_creds.rpc_url,
+            Auth::UserPass(
+                bitcoin_core_creds.rpc_username,
+                bitcoin_core_creds.rpc_password,
+            ),
         )
         .unwrap();
 
         if config.maxsize.is_none() {
             let bal = utils::get_eligible_balance(&rpc_client)?;
-            config.maxsize = Some(bal);
+            config.maxsize = Some(bal.to_sat());
         }
 
         let maker = Self {
@@ -71,7 +84,7 @@ impl Maker {
 
         let maxsize = match self.config.maxsize {
             Some(maxsize) => maxsize,
-            None => utils::get_eligible_balance(&self.rpc_client)?,
+            None => utils::get_eligible_balance(&self.rpc_client)?.to_sat(),
         };
 
         // TODO: This should be set better
@@ -177,6 +190,13 @@ impl Maker {
         }
     }
 
+    pub fn get_input_psbt(
+        &mut self,
+        send_amount: u64,
+        fee_rate: Option<Amount>,
+    ) -> Result<WalletCreateFundedPsbtResult, Error> {
+        utils::get_input_psbt(send_amount, fee_rate, &self.rpc_client)
+    }
     /// Send maker psbt
     pub fn send_maker_psbt(
         &mut self,
@@ -277,5 +297,20 @@ impl Maker {
         }
 
         utils::sign_psbt(unsigned_psbt, &self.rpc_client)
+    }
+
+    pub fn send_signed_psbt(
+        &mut self,
+        peer_pub_key: &str,
+        fill_offer: FillOffer,
+        signed_psbt: &WalletProcessPsbtResult,
+    ) -> Result<(), Error> {
+        utils::send_signed_psbt(
+            &self.identity,
+            peer_pub_key,
+            fill_offer.offer_id,
+            signed_psbt.clone(),
+            &mut self.nostr_client,
+        )
     }
 }

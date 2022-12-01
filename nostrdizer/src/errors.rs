@@ -19,6 +19,9 @@ pub enum Error {
 
     #[error("Bitcoin Sep256k1 error")]
     BitcoinSecpError(bitcoin::secp256k1::Error),
+
+    #[error("Could not broadcast transaction")]
+    FailedToBrodcast,
 }
 
 impl From<bitcoincore_rpc::Error> for Error {

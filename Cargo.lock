@@ -90,7 +90,6 @@ dependencies = [
 [[package]]
 name = "bitcoincore-rpc"
 version = "0.16.0"
-source = "git+https://github.com/thesimplekid/rust-bitcoincore-rpc?branch=decodepsbt#1b48fcaa6e6c3a67906bceb48e0ffc040e9e3254"
 dependencies = [
  "bitcoincore-rpc-json",
  "jsonrpc",
@@ -102,7 +101,6 @@ dependencies = [
 [[package]]
 name = "bitcoincore-rpc-json"
 version = "0.16.0"
-source = "git+https://github.com/thesimplekid/rust-bitcoincore-rpc?branch=decodepsbt#1b48fcaa6e6c3a67906bceb48e0ffc040e9e3254"
 dependencies = [
  "bitcoin",
  "serde",
@@ -817,8 +815,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bitcoin",
- "bitcoincore-rpc",
- "bitcoincore-rpc-json",
  "chrono",
  "clap",
  "dotenvy",
@@ -828,10 +824,8 @@ dependencies = [
  "nostr_rust",
  "nostrdizer",
  "rand",
- "secp256k1",
  "serde",
  "serde_json",
- "url",
 ]
 
 [[package]]

@@ -1,12 +1,18 @@
 use crate::{
     errors::Error,
-    types::{FillOffer, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Offer, Psbt},
+    types::{
+        BitcoinCoreCreditals, FillOffer, NostrdizerMessage, NostrdizerMessageKind,
+        NostrdizerMessages, Offer, Psbt,
+    },
     utils,
 };
 
 use bitcoin::{Amount, XOnlyPublicKey};
 
-use bitcoincore_rpc_json::WalletProcessPsbtResult;
+use bitcoincore_rpc_json::{
+    FinalizePsbtResult, ListUnspentResultEntry, WalletCreateFundedPsbtResult,
+    WalletProcessPsbtResult,
+};
 use nostr_rust::{
     events::Event, nips::nip4::decrypt, nostr_client::Client as NostrClient, req::ReqFilter,
     Identity,
@@ -31,16 +37,24 @@ pub struct Taker {
 }
 
 impl Taker {
-    pub fn new(priv_key: &str, relay_urls: Vec<&str>, rpc_url: &str) -> Result<Self, Error> {
+    pub fn new(
+        priv_key: &str,
+        relay_urls: Vec<&str>,
+        bitcoin_core_creds: BitcoinCoreCreditals,
+    ) -> Result<Self, Error> {
         let identity = Identity::from_str(priv_key).unwrap();
         let nostr_client = NostrClient::new(relay_urls).unwrap();
         let rpc_client = RPCClient::new(
-            rpc_url,
-            Auth::UserPass("bitcoin".to_string(), "password".to_string()),
+            &bitcoin_core_creds.rpc_url,
+            Auth::UserPass(
+                bitcoin_core_creds.rpc_username,
+                bitcoin_core_creds.rpc_password,
+            ),
         )
         .unwrap();
         let config = Config {
-            max_rel_fee: 0.015,
+            // TODO: Get this from config
+            max_rel_fee: 0.15,
             max_abs_fee: 5000,
         };
         let taker = Self {
@@ -50,6 +64,22 @@ impl Taker {
             rpc_client,
         };
         Ok(taker)
+    }
+
+    pub fn get_eligible_balance(&mut self) -> Result<Amount, Error> {
+        utils::get_eligible_balance(&self.rpc_client)
+    }
+
+    pub fn get_unspent(&mut self) -> Result<Vec<ListUnspentResultEntry>, Error> {
+        utils::get_unspent(&self.rpc_client)
+    }
+
+    pub fn get_input_psbt(
+        &mut self,
+        send_amount: u64,
+        fee_rate: Option<Amount>,
+    ) -> Result<WalletCreateFundedPsbtResult, Error> {
+        utils::get_input_psbt(send_amount, fee_rate, &self.rpc_client)
     }
 
     /// Gets signed peer psbts
@@ -240,15 +270,24 @@ impl Taker {
         Ok(())
     }
 
+    pub fn join_psbt(&mut self, psbts: Vec<String>) -> Result<String, Error> {
+        Ok(self.rpc_client.join_psbt(&psbts)?)
+    }
+
+    pub fn finalize_psbt(&mut self, psbt: &str) -> Result<FinalizePsbtResult, Error> {
+        Ok(self.rpc_client.finalize_psbt(psbt, None)?)
+    }
+
     /// Verify and sign psbt
     pub fn verify_and_sign_psbt(
         &mut self,
         send_amount: u64,
         unsigned_psbt: &str,
     ) -> Result<WalletProcessPsbtResult, Error> {
-        let decoded_tranaction = self.rpc_client.decode_psbt(unsigned_psbt).unwrap();
-
-        let tx = decoded_tranaction.tx;
+        log::debug!("Verify {:?}", unsigned_psbt);
+        let decoded_transaction = self.rpc_client.decode_psbt(unsigned_psbt).unwrap();
+        log::debug!("Decoded");
+        let tx = decoded_transaction.tx;
         let input_value = utils::get_my_input_value(tx.vin, &self.rpc_client)?;
         let output_value = utils::get_my_output_value(tx.vout, &self.rpc_client)?;
         info!("Taker is spending {} sats", input_value.to_sat());
@@ -269,5 +308,17 @@ impl Taker {
         }
 
         utils::sign_psbt(unsigned_psbt, &self.rpc_client)
+    }
+
+    pub fn broadcast_transaction(
+        &mut self,
+        final_psbt: FinalizePsbtResult,
+    ) -> Result<bitcoin::Txid, Error> {
+        log::debug!("{:?}", final_psbt);
+        if let Some(final_hex) = final_psbt.hex {
+            Ok(self.rpc_client.send_raw_transaction(&final_hex)?)
+        } else {
+            Err(Error::FailedToBrodcast)
+        }
     }
 }

@@ -7,11 +7,10 @@ use log::{debug, info, LevelFilter};
 use nostrdizer::{
     maker::Maker,
     taker,
-    types::{FillOffer, MakerConfig},
-    utils,
+    types::{BitcoinCoreCreditals, FillOffer, MakerConfig},
 };
 
-use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient};
+use nostr_rust::keys::get_random_secret_key;
 
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +18,6 @@ use rand::{thread_rng, Rng};
 use std::io::Write;
 
 use bitcoin::Amount;
-use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 
 /// CLI for joinstr
 #[derive(Parser, Debug, Serialize, Deserialize)]
@@ -105,7 +103,7 @@ fn main() -> anyhow::Result<()> {
                 record.args()
             )
         })
-        .filter(Some("joinstr_rust"), LevelFilter::Debug)
+        .filter(Some("nostrdizer"), LevelFilter::Debug)
         .init();
     debug!("Main");
     // Parse input
@@ -148,6 +146,12 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
+    let bitcoin_core_creds = BitcoinCoreCreditals {
+        rpc_url,
+        rpc_username,
+        rpc_password,
+    };
+
     let priv_key = match args.priv_key {
         Some(priv_key) => priv_key,
         None => {
@@ -174,21 +178,19 @@ fn main() -> anyhow::Result<()> {
     // REVIEW: be nice to get rid of this
     let relay_urls: Vec<&str> = relay_urls.iter().map(|x| x as &str).collect();
 
-    let rpc_client = RPCClient::new(&rpc_url, Auth::UserPass(rpc_username, rpc_password)).unwrap();
-
-    let mut nostr_client = NostrClient::new(relay_urls.clone()).unwrap();
-
     match &args.command {
         Commands::ListUnspent => {
-            let unspent = utils::get_unspent(rpc_client);
+            let mut taker = taker::Taker::new(&priv_key, relay_urls, bitcoin_core_creds)?;
+            let unspent = taker.get_unspent();
             println!("{:#?}", unspent);
         }
         Commands::GetEligibleBalance => {
-            let balance = utils::get_eligible_balance(&rpc_client);
+            let mut taker = taker::Taker::new(&priv_key, relay_urls, bitcoin_core_creds)?;
+            let balance = taker.get_eligible_balance()?;
             println!("{:?}", balance);
         }
         Commands::ListOffers => {
-            let mut taker = taker::Taker::new(&priv_key, relay_urls, &rpc_url)?;
+            let mut taker = taker::Taker::new(&priv_key, relay_urls, bitcoin_core_creds)?;
             let offers = taker.get_offers()?;
             for (i, offer) in offers.iter().enumerate() {
                 println!("Offer {}: {:?}", i, offer);
@@ -198,7 +200,7 @@ fn main() -> anyhow::Result<()> {
             send_amount,
             number_of_makers,
         } => {
-            let mut taker = taker::Taker::new(&priv_key, relay_urls, &rpc_url)?;
+            let mut taker = taker::Taker::new(&priv_key, relay_urls, bitcoin_core_creds)?;
             // TODO: Should filter peers by rate
             let number_of_makers = match number_of_makers {
                 Some(num) => *num,
@@ -238,7 +240,7 @@ fn main() -> anyhow::Result<()> {
                 // Setting fee rate as none uses core's fee estimation
                 // TODO: get the size of the transaction including all peer inputs
                 let fee_rate = Some(Amount::from_sat(5000));
-                let taker_psbt = utils::get_input_psbt(*send_amount, fee_rate, &rpc_client)?;
+                let taker_psbt = taker.get_input_psbt(*send_amount, fee_rate)?;
 
                 // converts maker inputs to vec of sting maker psbts
                 let mut psbts: Vec<String> = peer_psbts_hash
@@ -248,7 +250,7 @@ fn main() -> anyhow::Result<()> {
                 psbts.push(taker_psbt.psbt);
 
                 // Join maker psbts with taker psbt
-                let joined_psbt = rpc_client.join_psbt(&psbts)?;
+                let joined_psbt = taker.join_psbt(psbts)?;
                 debug!("combined_psbt: {:?}", joined_psbt);
                 // Send unsigned psbt to peers
                 for (pub_key, maker_input) in peer_psbts_hash {
@@ -259,13 +261,14 @@ fn main() -> anyhow::Result<()> {
                 let peer_signed_psbt = taker.get_signed_peer_psbts(number_of_makers)?;
                 info!("Makers have signed transaction, signing ...");
                 // Taker Sign psbt
-                let signed_psbt = utils::sign_psbt(&peer_signed_psbt, &rpc_client)?;
+                let signed_psbt = taker.verify_and_sign_psbt(*send_amount, &peer_signed_psbt)?;
                 debug!("Taker signed: {:?}", signed_psbt);
                 // Broadcast signed psbt
-                let finalized_psbt = rpc_client.finalize_psbt(&signed_psbt.psbt, None)?;
-                debug!("Finalized psbt: {:?}", finalized_psbt);
 
-                let txid = rpc_client.send_raw_transaction(&finalized_psbt.hex.unwrap())?;
+                let finalized_psbt = taker.finalize_psbt(&signed_psbt.psbt)?;
+                // debug!("Finalized psbt: {:?}", finalized_psbt);
+
+                let txid = taker.broadcast_transaction(finalized_psbt)?;
                 debug!("TXID: {:?}", txid);
             }
         }
@@ -341,7 +344,7 @@ fn main() -> anyhow::Result<()> {
             // TODO: check if offer is published if not prompt to publish
             println!("Listening...");
 
-            let mut maker = Maker::new(&priv_key, relay_urls, &mut config, &rpc_url)?;
+            let mut maker = Maker::new(&priv_key, relay_urls, &mut config, bitcoin_core_creds)?;
 
             let active_offer = maker.get_active_offer()?;
 
@@ -355,9 +358,10 @@ fn main() -> anyhow::Result<()> {
             let (peer_pubkey, fill_offer) = maker.get_fill_offer()?;
 
             debug!("Fill Offer: {:?}", fill_offer);
-            let maker_psbt =
-                utils::get_input_psbt(fill_offer.amount, Some(Amount::from_sat(0)), &rpc_client)?;
+
+            let maker_psbt = maker.get_input_psbt(fill_offer.amount, Some(Amount::from_sat(0)))?;
             debug!("Maker psbt {:?}", maker_psbt);
+
             let psbt_string = serde_json::to_string(&maker_psbt)?;
             debug!("Psbt string: {:?}", psbt_string);
             maker.send_maker_psbt(&peer_pubkey, fill_offer.offer_id, maker_psbt)?;
@@ -368,13 +372,7 @@ fn main() -> anyhow::Result<()> {
 
             let signed_psbt = maker.verify_and_sign_psbt(&fill_offer, &unsigned_psbt)?;
 
-            utils::send_signed_psbt(
-                &maker.identity,
-                &peer_pubkey,
-                fill_offer.offer_id,
-                signed_psbt,
-                &mut nostr_client,
-            )?;
+            maker.send_signed_psbt(&peer_pubkey, fill_offer, &signed_psbt)?;
         }
     }
     Ok(())

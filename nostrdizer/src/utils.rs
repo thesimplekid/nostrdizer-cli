@@ -101,12 +101,12 @@ pub fn send_signed_psbt(
 
 /// Gets balance eligible for coinjoin
 // Coins with 2 or more confirmations
-pub fn get_eligible_balance(rpc_client: &RPCClient) -> Result<u64, Error> {
-    Ok(rpc_client.get_balance(Some(2), Some(false))?.to_sat())
+pub fn get_eligible_balance(rpc_client: &RPCClient) -> Result<Amount, Error> {
+    Ok(rpc_client.get_balance(Some(2), Some(false))?)
 }
 
 /// Gets unspent UTXOs
-pub fn get_unspent(rpc_client: RPCClient) -> Result<Vec<ListUnspentResultEntry>, Error> {
+pub fn get_unspent(rpc_client: &RPCClient) -> Result<Vec<ListUnspentResultEntry>, Error> {
     println!("Unspent");
     Ok(rpc_client.list_unspent(None, None, None, Some(false), None)?)
 }
