@@ -31,7 +31,7 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 
 ### Known Issues
 - [ ] Maker can't collect fee
-- [ ] Offers aren't filtered by Maker fee
+- [x] Offers aren't filtered by Maker fee
 - [ ] Fee estimation doesn't work
 - [ ] No coin control to prevent mixing change and CJ
 

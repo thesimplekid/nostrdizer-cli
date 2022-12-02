@@ -222,7 +222,7 @@ fn main() -> anyhow::Result<()> {
                             offer_id: peer.1.offer_id,
                             amount: *send_amount,
                         },
-                        peer.0,
+                        &peer.0,
                     )?;
 
                     if i > number_of_makers {
@@ -242,7 +242,7 @@ fn main() -> anyhow::Result<()> {
                 let fee_rate = Some(Amount::from_sat(5000));
                 let taker_psbt = taker.get_input_psbt(*send_amount, fee_rate)?;
 
-                // converts maker inputs to vec of sting maker psbts
+                // converts maker inputs to vec of string maker psbts
                 let mut psbts: Vec<String> = peer_psbts_hash
                     .values()
                     .map(|maker_input| maker_input.psbt.to_string())

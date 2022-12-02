@@ -204,23 +204,33 @@ impl Taker {
         Ok(())
     }
 
-    /// Get offers that match send
-    pub fn get_matching_offers(
-        &mut self,
-        send_amount: u64,
-    ) -> Result<HashMap<String, Offer>, Error> {
+    /// Get offers that match send sorted for lowest fee first
+    pub fn get_matching_offers(&mut self, send_amount: u64) -> Result<Vec<(String, Offer)>, Error> {
         // TODO: match should also be based on fee rate
         let offers = self.get_offers()?;
-        let matching_offers = offers
+        let mut matching_offers: Vec<(String, Offer)> = offers
             .into_iter()
-            .filter(|(_k, o)| o.maxsize > send_amount && o.minsize < send_amount)
+            .filter(|(_k, offer)| {
+                offer.maxsize > send_amount
+                    && offer.minsize < send_amount
+                    && offer.rel_fee < self.config.max_rel_fee
+                    && offer.abs_fee < self.config.max_abs_fee
+            })
             .collect();
+
+        // Sorts so lowest fee maker is first
+        // Not sure how efficient this is
+        matching_offers.sort_by(|a, b| {
+            (a.1.rel_fee * send_amount as f32 + a.1.abs_fee as f32)
+                .partial_cmp(&(b.1.rel_fee * send_amount as f32 + b.1.abs_fee as f32))
+                .unwrap()
+        });
 
         Ok(matching_offers)
     }
 
     /// Gets current offers
-    pub fn get_offers(&mut self) -> Result<HashMap<String, Offer>, Error> {
+    pub fn get_offers(&mut self) -> Result<Vec<(String, Offer)>, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
@@ -232,13 +242,13 @@ impl Taker {
             limit: None,
         };
 
-        let mut offers = HashMap::new();
+        let mut offers = Vec::new();
 
         let events = self.nostr_client.get_events_of(vec![filter])?;
         for event in events {
             let j_event: NostrdizerMessage = serde_json::from_str(&event.content)?;
             if let NostrdizerMessages::Offer(offer) = j_event.event {
-                offers.insert(event.pub_key, offer);
+                offers.push((event.pub_key, offer));
             }
         }
 
