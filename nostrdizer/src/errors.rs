@@ -33,7 +33,7 @@ pub enum Error {
     CJValueBelowMin,
 
     #[error("Could not estimate fee")]
-    FeeEstimation
+    FeeEstimation,
 }
 
 impl From<bitcoincore_rpc::Error> for Error {

@@ -1,8 +1,8 @@
 use crate::{
     errors::Error,
     types::{
-        BitcoinCoreCreditals, FillOffer, MakerConfig, MakerInput, NostrdizerMessage,
-        NostrdizerMessageKind, NostrdizerMessages, Offer,
+        BitcoinCoreCreditals, FillOffer, MakerInput, NostrdizerMessage, NostrdizerMessageKind,
+        NostrdizerMessages, Offer,
     },
     utils,
 };
@@ -31,16 +31,19 @@ use rand::{thread_rng, Rng};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
-    pub abs_fee: u64,
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    pub abs_fee: Amount,
     pub rel_fee: f32,
-    pub minsize: u64,
-    pub maxsize: Option<u64>,
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    pub minsize: Amount,
+    #[serde(default, with = "bitcoin::util::amount::serde::as_btc::opt")]
+    pub maxsize: Option<Amount>,
     pub will_broadcast: bool,
 }
 
 pub struct Maker {
     pub identity: Identity,
-    config: MakerConfig,
+    config: Config,
     nostr_client: NostrClient,
     rpc_client: RPCClient,
 }
@@ -49,7 +52,7 @@ impl Maker {
     pub fn new(
         priv_key: &str,
         relay_urls: Vec<&str>,
-        config: &mut MakerConfig,
+        config: &mut Config,
         bitcoin_core_creds: BitcoinCoreCreditals,
     ) -> Result<Self, Error> {
         let identity = Identity::from_str(priv_key).unwrap();
@@ -67,7 +70,7 @@ impl Maker {
 
         if config.maxsize.is_none() {
             let bal = utils::get_eligible_balance(&rpc_client)?;
-            config.maxsize = Some(bal.to_sat());
+            config.maxsize = Some(bal);
         }
 
         let maker = Self {
@@ -84,11 +87,11 @@ impl Maker {
 
         let maxsize = match self.config.maxsize {
             Some(maxsize) => maxsize,
-            None => utils::get_eligible_balance(&self.rpc_client)?.to_sat(),
+            None => utils::get_eligible_balance(&self.rpc_client)?,
         };
 
         // TODO: This should be set better
-        if maxsize < 5000 {
+        if maxsize < Amount::from_sat(5000) {
             return Err(Error::NoMatchingUtxo);
         }
 
@@ -208,7 +211,7 @@ impl Maker {
             inputs.push(input);
             value += utxo.amount;
 
-            if value.to_sat() >= fill_offer.amount {
+            if value >= fill_offer.amount {
                 break;
             }
         }
@@ -305,9 +308,9 @@ impl Maker {
         info!("Maker is receiving {} sats", output_value.to_sat());
 
         // NOTE: this assumes rel fee in format .015 for 1.5%
-        let rel_fee = (fill_offer.amount as f32 * self.config.rel_fee).floor() as u64;
+        let rel_fee = (fill_offer.amount.to_sat() as f32 * self.config.rel_fee).floor() as u64;
 
-        let required_fee = Amount::from_sat(self.config.abs_fee + rel_fee);
+        let required_fee = self.config.abs_fee + Amount::from_sat(rel_fee);
 
         // Ensures maker is getting input + their set fee
         if output_value < (input_value + required_fee) {

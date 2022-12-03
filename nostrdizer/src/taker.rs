@@ -27,7 +27,7 @@ use std::str::FromStr;
 
 struct Config {
     max_rel_fee: f32,
-    max_abs_fee: u64,
+    max_abs_fee: Amount,
 }
 
 pub struct Taker {
@@ -56,7 +56,7 @@ impl Taker {
         let config = Config {
             // TODO: Get this from config
             max_rel_fee: 0.30,
-            max_abs_fee: 5000,
+            max_abs_fee: Amount::from_sat(5000),
         };
         let taker = Self {
             identity,
@@ -211,13 +211,13 @@ impl Taker {
     /// Creates CJ transaction
     pub fn create_cj(
         &mut self,
-        send_amount: u64,
+        send_amount: Amount,
         maker_inputs: Vec<(String, MakerInput)>,
         maker_offers: HashMap<String, Offer>,
     ) -> Result<String, Error> {
         let mut inputs = vec![];
         let mut outputs = HashMap::new();
-        let mut total_maker_fees = 0;
+        let mut total_maker_fees = Amount::ZERO;
         for (maker, maker_input) in maker_inputs {
             for input in maker_input.inputs.clone() {
                 let raw_input = CreateRawTransactionInput {
@@ -236,28 +236,25 @@ impl Taker {
                     .unwrap()
                     .value
             });
-            outputs.insert(
-                maker_input.cj_out_address.to_string(),
-                Amount::from_sat(send_amount),
-            );
+            outputs.insert(maker_input.cj_out_address.to_string(), send_amount);
 
             let maker_offer = maker_offers.get(&maker).unwrap();
-            let maker_fee =
-                (send_amount as f32 * maker_offer.rel_fee).floor() as u64 + maker_offer.abs_fee;
+            let maker_fee = Amount::from_sat(
+                (send_amount.to_sat() as f32 * maker_offer.rel_fee).floor() as u64,
+            ) + maker_offer.abs_fee;
             total_maker_fees += maker_fee;
-            let change_value =
-                maker_input_val - Amount::from_sat(send_amount) + Amount::from_sat(maker_fee);
+            let change_value = maker_input_val - send_amount + maker_fee;
 
             outputs.insert(maker_input.change_address.to_string(), change_value);
         }
 
         // Taker inputs
-        let mut taker_inputs = self.get_inputs(Amount::from_sat(send_amount + total_maker_fees))?;
+        let mut taker_inputs = self.get_inputs(send_amount + total_maker_fees)?;
         inputs.append(&mut taker_inputs.1);
 
         // Taker output
         let taker_cj_out = self.rpc_client.get_new_address(Some("Cj out"), None)?;
-        outputs.insert(taker_cj_out.to_string(), Amount::from_sat(send_amount));
+        outputs.insert(taker_cj_out.to_string(), send_amount);
 
         // Taker change output
         let taker_change_out = self.rpc_client.get_raw_change_address(None)?;
@@ -282,10 +279,7 @@ impl Taker {
             Err(_) => Amount::from_sat(500),
         };
         debug!("Mining fee: {:?}", mining_fee);
-        let taker_change = taker_inputs.0
-            - Amount::from_sat(send_amount)
-            - Amount::from_sat(total_maker_fees)
-            - mining_fee;
+        let taker_change = taker_inputs.0 - send_amount - total_maker_fees - mining_fee;
         outputs.insert(taker_change_out.to_string(), taker_change);
 
         debug!("inputs {:?}", inputs);
@@ -320,7 +314,10 @@ impl Taker {
     }
 
     /// Get offers that match send sorted for lowest fee first
-    pub fn get_matching_offers(&mut self, send_amount: u64) -> Result<Vec<(String, Offer)>, Error> {
+    pub fn get_matching_offers(
+        &mut self,
+        send_amount: Amount,
+    ) -> Result<Vec<(String, Offer)>, Error> {
         // TODO: match should also be based on fee rate
         let offers = self.get_offers()?;
         let mut matching_offers: Vec<(String, Offer)> = offers
@@ -336,8 +333,10 @@ impl Taker {
         // Sorts so lowest fee maker is first
         // Not sure how efficient this is
         matching_offers.sort_by(|a, b| {
-            (a.1.rel_fee * send_amount as f32 + a.1.abs_fee as f32)
-                .partial_cmp(&(b.1.rel_fee * send_amount as f32 + b.1.abs_fee as f32))
+            (a.1.rel_fee * send_amount.to_sat() as f32 + a.1.abs_fee.to_sat() as f32)
+                .partial_cmp(
+                    &(b.1.rel_fee * send_amount.to_sat() as f32 + b.1.abs_fee.to_sat() as f32),
+                )
                 .unwrap()
         });
 
@@ -406,7 +405,7 @@ impl Taker {
     /// Verify and sign psbt
     pub fn verify_and_sign_psbt(
         &mut self,
-        send_amount: u64,
+        send_amount: Amount,
         unsigned_psbt: &str,
     ) -> Result<WalletProcessPsbtResult, Error> {
         let decoded_transaction = self.rpc_client.decode_psbt(unsigned_psbt).unwrap();
@@ -418,11 +417,11 @@ impl Taker {
 
         let fee = input_value - output_value;
 
-        if fee > Amount::from_sat(self.config.max_abs_fee) {
+        if fee > self.config.max_abs_fee {
             panic!()
         }
 
-        let fee_as_percent = fee.to_sat() as f32 / send_amount as f32;
+        let fee_as_percent = fee.to_sat() as f32 / send_amount.to_sat() as f32;
 
         info!("Relative fee: {}", fee_as_percent);
         // REVIEW: account for mining fee

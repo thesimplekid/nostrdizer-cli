@@ -1,13 +1,13 @@
 use clap::{Parser, Subcommand};
 
 use dotenvy::dotenv;
-use std::{env, panic, collections::HashMap};
+use std::{collections::HashMap, env, panic};
 
 use log::{debug, info, LevelFilter};
 use nostrdizer::{
-    maker::Maker,
+    maker::{Config as MakerConfig, Maker},
     taker,
-    types::{BitcoinCoreCreditals, FillOffer, MakerConfig},
+    types::{BitcoinCoreCreditals, FillOffer},
 };
 
 use nostr_rust::keys::get_random_secret_key;
@@ -209,8 +209,9 @@ fn main() -> anyhow::Result<()> {
                     rng.gen_range(3..9)
                 }
             };
+            let send_amount = Amount::from_sat(*send_amount);
             // REVIEW: if there are no matching offers it just ends
-            let matching_peers = taker.get_matching_offers(*send_amount)?;
+            let matching_peers = taker.get_matching_offers(send_amount)?;
             debug!("Matching peers {:?}", matching_peers);
 
             let mut matched_peers = HashMap::new();
@@ -222,7 +223,7 @@ fn main() -> anyhow::Result<()> {
                     taker.send_fill_offer_message(
                         FillOffer {
                             offer_id: peer.1.offer_id,
-                            amount: *send_amount,
+                            amount: send_amount,
                         },
                         &peer.0,
                     )?;
@@ -252,7 +253,7 @@ fn main() -> anyhow::Result<()> {
                 //    .collect();
                 //psbts.push(taker_psbt.psbt);
                 //
-                let cj = taker.create_cj(*send_amount, peer_inputs, matched_peers.clone())?;
+                let cj = taker.create_cj(send_amount, peer_inputs, matched_peers.clone())?;
 
                 // Join maker psbts with taker psbt
                 // let joined_psbt = taker.join_psbt(psbts)?;
@@ -266,7 +267,7 @@ fn main() -> anyhow::Result<()> {
                 let peer_signed_psbt = taker.get_signed_peer_psbts(number_of_makers)?;
                 info!("Makers have signed transaction, signing ...");
                 // Taker Sign psbt
-                let signed_psbt = taker.verify_and_sign_psbt(*send_amount, &peer_signed_psbt)?;
+                let signed_psbt = taker.verify_and_sign_psbt(send_amount, &peer_signed_psbt)?;
                 debug!("Taker signed: {:?}", signed_psbt);
                 // Broadcast signed psbt
 
@@ -285,12 +286,12 @@ fn main() -> anyhow::Result<()> {
             will_broadcast,
         } => {
             let abs_fee = match abs_fee {
-                Some(abs_fee) => *abs_fee,
+                Some(abs_fee) => Amount::from_sat(*abs_fee),
                 None => {
                     if let Ok(abs_fee) = env::var("MAKER_ABS_FEE") {
-                        abs_fee.parse::<u64>()?
+                        Amount::from_sat(abs_fee.parse::<u64>()?)
                     } else {
-                        0
+                        Amount::ZERO
                     }
                 }
             };
@@ -307,21 +308,21 @@ fn main() -> anyhow::Result<()> {
             };
 
             let minsize = match minsize {
-                Some(minsize) => *minsize,
+                Some(minsize) => Amount::from_sat(*minsize),
                 None => {
                     if let Ok(minsize) = env::var("MAKER_MINSIZE") {
-                        minsize.parse()?
+                        Amount::from_sat(minsize.parse()?)
                     } else {
-                        5000
+                        Amount::from_sat(5000)
                     }
                 }
             };
 
             let maxsize = match maxsize {
-                Some(maxsize) => Some(*maxsize),
+                Some(maxsize) => Some(Amount::from_sat(*maxsize)),
                 None => {
                     if let Ok(maxsize) = env::var("MAKER_MAXSIZE") {
-                        Some(maxsize.parse()?)
+                        Some(Amount::from_sat(maxsize.parse()?))
                     } else {
                         None
                     }

@@ -58,8 +58,13 @@ pub fn get_input_psbt(
             conf_target: None,
             estimate_mode: None,
         };
-        let psbt = rpc_client
-            .wallet_create_funded_psbt(&inputs, &outputs, None, Some(psbt_options), None)?;
+        let psbt = rpc_client.wallet_create_funded_psbt(
+            &inputs,
+            &outputs,
+            None,
+            Some(psbt_options),
+            None,
+        )?;
 
         return Ok(psbt);
     }
