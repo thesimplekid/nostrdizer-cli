@@ -22,6 +22,18 @@ pub enum Error {
 
     #[error("Could not broadcast transaction")]
     FailedToBrodcast,
+
+    #[error("CJ value over max")]
+    CJValueOveMax,
+
+    #[error("Output value less then expected value")]
+    OutputValueLessExpected,
+
+    #[error("CJ value below minimum")]
+    CJValueBelowMin,
+
+    #[error("Could not estimate fee")]
+    FeeEstimation
 }
 
 impl From<bitcoincore_rpc::Error> for Error {

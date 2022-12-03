@@ -1,7 +1,8 @@
+use bitcoin::{Address, Txid};
 use serde::{Deserialize, Serialize};
 
 /// Info for maker offer
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub struct Offer {
     /// Offer Id
     pub offer_id: u32,
@@ -35,7 +36,7 @@ pub struct Psbt {
 pub enum NostrdizerMessages {
     Offer(Offer),
     FillOffer(FillOffer),
-    MakerPsbt(Psbt),
+    MakerInputs(MakerInput),
     UnsignedCJ(Psbt),
     SignedCJ(Psbt),
 }
@@ -54,6 +55,14 @@ pub enum NostrdizerMessageKind {
 pub struct NostrdizerMessage {
     pub event_type: NostrdizerMessageKind,
     pub event: NostrdizerMessages,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MakerInput {
+    pub offer_id: u32,
+    pub inputs: Vec<(Txid, u32)>,
+    pub cj_out_address: Address,
+    pub change_address: Address
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

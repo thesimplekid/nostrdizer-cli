@@ -19,44 +19,49 @@ pub fn get_input_psbt(
     rpc_client: &RPCClient,
 ) -> Result<WalletCreateFundedPsbtResult, Error> {
     let unspent = rpc_client.list_unspent(None, None, None, None, None)?;
+    debug!("List unspent: {:?}", unspent);
+    let mut inputs: Vec<CreateRawTransactionInput> = vec![];
+    let mut value: Amount = Amount::ZERO;
     for utxo in unspent {
-        if utxo.amount.to_sat() > amount {
-            // label, Address type
-            let cj_out_address = rpc_client.get_new_address(Some("CJ out"), None)?;
+        let input = CreateRawTransactionInput {
+            txid: utxo.txid,
+            vout: utxo.vout,
+            sequence: None,
+        };
 
-            let input = CreateRawTransactionInput {
-                txid: utxo.txid,
-                vout: utxo.vout,
-                sequence: None,
-            };
+        inputs.push(input);
+        value += utxo.amount;
 
-            // Outputs
-            let mut outputs = HashMap::new();
-            outputs.insert(cj_out_address.to_string(), Amount::from_sat(amount));
-
-            let psbt_options = WalletCreateFundedPsbtOptions {
-                add_inputs: None,
-                change_address: None,
-                change_position: None,
-                change_type: None,
-                include_watching: None,
-                lock_unspent: None,
-                fee_rate,
-                subtract_fee_from_outputs: vec![],
-                replaceable: Some(false),
-                conf_target: None,
-                estimate_mode: None,
-            };
-            let psbt = rpc_client.wallet_create_funded_psbt(
-                &[input],
-                &outputs,
-                None,
-                Some(psbt_options),
-                None,
-            )?;
-
-            return Ok(psbt);
+        if value.to_sat() >= amount {
+            break;
         }
+    }
+
+    if value.to_sat() >= amount {
+        // label, Address type
+        let cj_out_address = rpc_client.get_new_address(Some("CJ out"), None)?;
+
+        // Outputs
+        let mut outputs = HashMap::new();
+        outputs.insert(cj_out_address.to_string(), Amount::from_sat(amount));
+
+        let psbt_options = WalletCreateFundedPsbtOptions {
+            add_inputs: Some(true),
+            change_address: None,
+            change_position: None,
+            change_type: None,
+            include_watching: None,
+            lock_unspent: None,
+            fee_rate,
+            subtract_fee_from_outputs: vec![],
+            replaceable: Some(false),
+            conf_target: None,
+            estimate_mode: None,
+        };
+        let psbt = rpc_client
+            .wallet_create_funded_psbt(&inputs, &outputs, None, Some(psbt_options), None)?;
+
+        return Ok(psbt);
     }
     Err(Error::NoMatchingUtxo)
 }
@@ -67,7 +72,6 @@ pub fn sign_psbt(
     rpc_client: &RPCClient,
 ) -> Result<WalletProcessPsbtResult, Error> {
     let signed_psbt = rpc_client.wallet_process_psbt(unsigned_psbt, Some(true), None, None)?;
-    debug!("signed {:?}", signed_psbt);
     Ok(signed_psbt)
 }
 
@@ -94,8 +98,6 @@ pub fn send_signed_psbt(
         0,
     )?;
 
-    debug!("Sent psbt");
-
     Ok(())
 }
 
@@ -107,8 +109,18 @@ pub fn get_eligible_balance(rpc_client: &RPCClient) -> Result<Amount, Error> {
 
 /// Gets unspent UTXOs
 pub fn get_unspent(rpc_client: &RPCClient) -> Result<Vec<ListUnspentResultEntry>, Error> {
-    println!("Unspent");
     Ok(rpc_client.list_unspent(None, None, None, Some(false), None)?)
+}
+
+/// Get mining fee to get into the next block
+pub fn get_mining_fee(rpc_client: &RPCClient) -> Result<Amount, Error> {
+    let fee = rpc_client.estimate_smart_fee(1, None)?;
+
+    if let Some(fee) = fee.fee_rate {
+        Ok(fee)
+    } else {
+        Err(Error::FeeEstimation)
+    }
 }
 
 /// Get the input value of decoded psbt that is mine
@@ -123,12 +135,9 @@ pub fn get_my_input_value(
 
         match (txid, vout) {
             (Some(txid), Some(vout)) => {
-                println!("{:?} {:?}", txid, vout);
                 let tx_out = rpc_client.get_tx_out(&txid, vout, Some(false))?;
-                debug!("tx_out: {:?}", tx_out);
                 if let Some(tx_out) = tx_out {
                     if let Some(address) = tx_out.script_pub_key.address {
-                        debug!("Address: {:?}", address);
                         let add_info = rpc_client.get_address_info(&address)?;
                         if add_info.is_mine == Some(true) {
                             input_value += tx_out.value;

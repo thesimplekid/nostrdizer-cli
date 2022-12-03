@@ -1,7 +1,7 @@
 use crate::{
     errors::Error,
     types::{
-        BitcoinCoreCreditals, FillOffer, NostrdizerMessage, NostrdizerMessageKind,
+        BitcoinCoreCreditals, FillOffer, MakerInput, NostrdizerMessage, NostrdizerMessageKind,
         NostrdizerMessages, Offer, Psbt,
     },
     utils,
@@ -10,8 +10,8 @@ use crate::{
 use bitcoin::{Amount, XOnlyPublicKey};
 
 use bitcoincore_rpc_json::{
-    FinalizePsbtResult, ListUnspentResultEntry, WalletCreateFundedPsbtResult,
-    WalletProcessPsbtResult,
+    CreateRawTransactionInput, FinalizePsbtResult, ListUnspentResultEntry,
+    WalletCreateFundedPsbtResult, WalletProcessPsbtResult,
 };
 use nostr_rust::{
     events::Event, nips::nip4::decrypt, nostr_client::Client as NostrClient, req::ReqFilter,
@@ -19,6 +19,7 @@ use nostr_rust::{
 };
 
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
+use log::debug;
 use log::info;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -54,7 +55,7 @@ impl Taker {
         .unwrap();
         let config = Config {
             // TODO: Get this from config
-            max_rel_fee: 0.15,
+            max_rel_fee: 0.30,
             max_abs_fee: 5000,
         };
         let taker = Self {
@@ -134,8 +135,10 @@ impl Taker {
     }
 
     /// Gets peer maker inputs from relay
-    // Taker
-    pub fn get_peer_inputs(&mut self, peer_count: usize) -> Result<HashMap<String, Psbt>, Error> {
+    pub fn get_peer_inputs(
+        &mut self,
+        peer_count: usize,
+    ) -> Result<Vec<(String, MakerInput)>, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
@@ -149,7 +152,7 @@ impl Taker {
 
         let subcription_id = &self.nostr_client.subscribe(vec![filter])?;
 
-        let mut peer_inputs = HashMap::new();
+        let mut peer_inputs = vec![];
         loop {
             let data = &self.nostr_client.next_data()?;
             for (_, message) in data {
@@ -166,22 +169,134 @@ impl Taker {
                         let decrypted_content =
                             decrypt(&self.identity.secret_key, &x, &event.content)?;
                         let j_event: NostrdizerMessage = serde_json::from_str(&decrypted_content)?;
-                        if let NostrdizerMessages::MakerPsbt(maker_input) = j_event.event {
-                            // Close subscription to relay
-                            peer_inputs.insert(event.pub_key.clone(), maker_input);
+                        if let NostrdizerMessages::MakerInputs(maker_input) = j_event.event {
+                            peer_inputs.push((event.pub_key.clone(), maker_input));
                         }
                     }
                 }
             }
 
             if peer_inputs.len() >= peer_count {
-                // Close subscription to relay
                 return Ok(peer_inputs.clone());
             }
         }
     }
 
-    /// Get input psbt
+    /// Gets the taker inputs for CJ transaction
+    pub fn get_inputs(
+        &mut self,
+        amount: Amount,
+    ) -> Result<(Amount, Vec<CreateRawTransactionInput>), Error> {
+        let unspent = self.rpc_client.list_unspent(None, None, None, None, None)?;
+        let mut inputs = vec![];
+        let mut value: Amount = Amount::ZERO;
+        for utxo in unspent {
+            let input = CreateRawTransactionInput {
+                txid: utxo.txid,
+                vout: utxo.vout,
+                sequence: None,
+            };
+
+            inputs.push(input);
+            value += utxo.amount;
+
+            if value >= amount {
+                break;
+            }
+        }
+
+        Ok((value, inputs))
+    }
+
+    /// Creates CJ transaction
+    pub fn create_cj(
+        &mut self,
+        send_amount: u64,
+        maker_inputs: Vec<(String, MakerInput)>,
+        maker_offers: HashMap<String, Offer>,
+    ) -> Result<String, Error> {
+        let mut inputs = vec![];
+        let mut outputs = HashMap::new();
+        let mut total_maker_fees = 0;
+        for (maker, maker_input) in maker_inputs {
+            for input in maker_input.inputs.clone() {
+                let raw_input = CreateRawTransactionInput {
+                    txid: input.0,
+                    vout: input.1,
+                    sequence: None,
+                };
+                inputs.push(raw_input);
+            }
+
+            let maker_input_val = maker_input.inputs.iter().fold(Amount::ZERO, |val, input| {
+                val + self
+                    .rpc_client
+                    .get_tx_out(&input.0, input.1, Some(false))
+                    .unwrap()
+                    .unwrap()
+                    .value
+            });
+            outputs.insert(
+                maker_input.cj_out_address.to_string(),
+                Amount::from_sat(send_amount),
+            );
+
+            let maker_offer = maker_offers.get(&maker).unwrap();
+            let maker_fee =
+                (send_amount as f32 * maker_offer.rel_fee).floor() as u64 + maker_offer.abs_fee;
+            total_maker_fees += maker_fee;
+            let change_value =
+                maker_input_val - Amount::from_sat(send_amount) + Amount::from_sat(maker_fee);
+
+            outputs.insert(maker_input.change_address.to_string(), change_value);
+        }
+
+        // Taker inputs
+        let mut taker_inputs = self.get_inputs(Amount::from_sat(send_amount + total_maker_fees))?;
+        inputs.append(&mut taker_inputs.1);
+
+        // Taker output
+        let taker_cj_out = self.rpc_client.get_new_address(Some("Cj out"), None)?;
+        outputs.insert(taker_cj_out.to_string(), Amount::from_sat(send_amount));
+
+        // Taker change output
+        let taker_change_out = self.rpc_client.get_raw_change_address(None)?;
+        outputs.insert(taker_change_out.to_string(), Amount::from_sat(1000));
+        let transaction = self
+            .rpc_client
+            .create_raw_transaction(&inputs, &outputs, None, None)?;
+
+        // Calc change maker should get
+        // REVIEW: Not sure this fee calc is correct
+        // don't think it included sig size
+        let mining_fee = match utils::get_mining_fee(&self.rpc_client) {
+            Ok(fee) => {
+                let cal_fee =
+                    Amount::from_sat((fee.to_sat() as usize * transaction.vsize()) as u64 / 1000);
+                if cal_fee > Amount::from_sat(270) {
+                    cal_fee
+                } else {
+                    Amount::from_sat(270)
+                }
+            }
+            Err(_) => Amount::from_sat(500),
+        };
+        debug!("Mining fee: {:?}", mining_fee);
+        let taker_change = taker_inputs.0
+            - Amount::from_sat(send_amount)
+            - Amount::from_sat(total_maker_fees)
+            - mining_fee;
+        outputs.insert(taker_change_out.to_string(), taker_change);
+
+        debug!("inputs {:?}", inputs);
+        debug!("Outputs: {:?}", outputs);
+        let psbt = self
+            .rpc_client
+            .create_psbt(&inputs, &outputs, None, None)
+            .unwrap();
+
+        Ok(psbt)
+    }
 
     /// Send fill offer from taker to maker
     pub fn send_fill_offer_message(
@@ -294,9 +409,7 @@ impl Taker {
         send_amount: u64,
         unsigned_psbt: &str,
     ) -> Result<WalletProcessPsbtResult, Error> {
-        log::debug!("Verify {:?}", unsigned_psbt);
         let decoded_transaction = self.rpc_client.decode_psbt(unsigned_psbt).unwrap();
-        log::debug!("Decoded");
         let tx = decoded_transaction.tx;
         let input_value = utils::get_my_input_value(tx.vin, &self.rpc_client)?;
         let output_value = utils::get_my_output_value(tx.vout, &self.rpc_client)?;

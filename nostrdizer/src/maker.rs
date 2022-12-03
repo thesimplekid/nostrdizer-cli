@@ -1,8 +1,8 @@
 use crate::{
     errors::Error,
     types::{
-        BitcoinCoreCreditals, FillOffer, MakerConfig, NostrdizerMessage, NostrdizerMessageKind,
-        NostrdizerMessages, Offer, Psbt,
+        BitcoinCoreCreditals, FillOffer, MakerConfig, MakerInput, NostrdizerMessage,
+        NostrdizerMessageKind, NostrdizerMessages, Offer,
     },
     utils,
 };
@@ -114,7 +114,6 @@ impl Maker {
             content,
         }
         .to_event(&self.identity, 0);
-        debug!("Event: {:?}", event);
 
         self.nostr_client.publish_event(&event)?;
 
@@ -197,17 +196,48 @@ impl Maker {
     ) -> Result<WalletCreateFundedPsbtResult, Error> {
         utils::get_input_psbt(send_amount, fee_rate, &self.rpc_client)
     }
-    /// Send maker psbt
-    pub fn send_maker_psbt(
+
+    /// Gets maker input for CJ
+    pub fn get_inputs(&mut self, fill_offer: &FillOffer) -> Result<MakerInput, Error> {
+        let unspent = self.rpc_client.list_unspent(None, None, None, None, None)?;
+        let mut inputs = vec![];
+        let mut value: Amount = Amount::ZERO;
+        for utxo in unspent {
+            let input = (utxo.txid, utxo.vout);
+
+            inputs.push(input);
+            value += utxo.amount;
+
+            if value.to_sat() >= fill_offer.amount {
+                break;
+            }
+        }
+
+        let cj_out_address = self.rpc_client.get_new_address(Some("CJ out"), None)?;
+        debug!("Maker cj out: {}", cj_out_address);
+
+        let change_address = self.rpc_client.get_raw_change_address(None).unwrap();
+        debug!("Maker change out: {}", change_address);
+
+        let maker_input = MakerInput {
+            offer_id: fill_offer.offer_id,
+            inputs,
+            cj_out_address,
+            change_address,
+        };
+
+        Ok(maker_input)
+    }
+
+    /// Send maker input
+    pub fn send_maker_input(
         &mut self,
         peer_pub_key: &str,
-        offer_id: u32,
-        psbt: WalletCreateFundedPsbtResult,
+        maker_input: MakerInput,
     ) -> Result<(), Error> {
-        let psbt = psbt.psbt;
         let message = NostrdizerMessage {
             event_type: NostrdizerMessageKind::MakerPsbt,
-            event: NostrdizerMessages::MakerPsbt(Psbt { offer_id, psbt }),
+            event: NostrdizerMessages::MakerInputs(maker_input),
         };
         self.nostr_client.send_private_message(
             &self.identity,
@@ -274,8 +304,6 @@ impl Maker {
         info!("Maker is spending {} sats", input_value.to_sat());
         info!("Maker is receiving {} sats", output_value.to_sat());
 
-        debug!("Output value {:?}", output_value);
-
         // NOTE: this assumes rel fee in format .015 for 1.5%
         let rel_fee = (fill_offer.amount as f32 * self.config.rel_fee).floor() as u64;
 
@@ -283,17 +311,17 @@ impl Maker {
 
         // Ensures maker is getting input + their set fee
         if output_value < (input_value + required_fee) {
-            panic!();
+            return Err(Error::OutputValueLessExpected);
         }
 
         if let Some(maxsize) = self.config.maxsize {
-            if output_value > Amount::from_sat(maxsize) {
-                panic!()
+            if fill_offer.amount > maxsize {
+                return Err(Error::CJValueOveMax);
             }
         }
 
-        if output_value < Amount::from_sat(self.config.minsize) {
-            panic!()
+        if fill_offer.amount < self.config.minsize {
+            return Err(Error::CJValueBelowMin);
         }
 
         utils::sign_psbt(unsigned_psbt, &self.rpc_client)
