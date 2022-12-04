@@ -14,7 +14,7 @@ use log::debug;
 use std::collections::HashMap;
 
 pub fn get_input_psbt(
-    amount: u64,
+    amount: Amount,
     fee_rate: Option<Amount>,
     rpc_client: &RPCClient,
 ) -> Result<WalletCreateFundedPsbtResult, Error> {
@@ -32,18 +32,18 @@ pub fn get_input_psbt(
         inputs.push(input);
         value += utxo.amount;
 
-        if value.to_sat() >= amount {
+        if value >= amount {
             break;
         }
     }
 
-    if value.to_sat() >= amount {
+    if value >= amount {
         // label, Address type
         let cj_out_address = rpc_client.get_new_address(Some("CJ out"), None)?;
 
         // Outputs
         let mut outputs = HashMap::new();
-        outputs.insert(cj_out_address.to_string(), Amount::from_sat(amount));
+        outputs.insert(cj_out_address.to_string(), amount);
 
         let psbt_options = WalletCreateFundedPsbtOptions {
             add_inputs: Some(true),

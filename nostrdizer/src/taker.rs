@@ -77,7 +77,7 @@ impl Taker {
 
     pub fn get_input_psbt(
         &mut self,
-        send_amount: u64,
+        send_amount: Amount,
         fee_rate: Option<Amount>,
     ) -> Result<WalletCreateFundedPsbtResult, Error> {
         utils::get_input_psbt(send_amount, fee_rate, &self.rpc_client)
