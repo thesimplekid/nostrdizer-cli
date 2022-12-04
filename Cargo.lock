@@ -771,28 +771,6 @@ dependencies = [
 
 [[package]]
 name = "nostr_rust"
-version = "0.11.0"
-source = "git+https://github.com/thesimplekid/nostr_rust?branch=nostrdizer#85d3f59bbbc049d751bdfd519ab1ac201ded3fad"
-dependencies = [
- "aes",
- "base64",
- "bech32",
- "cbc",
- "hex",
- "rand",
- "reqwest",
- "secp256k1",
- "serde",
- "serde_derive",
- "serde_json",
- "sha256",
- "thiserror",
- "tungstenite 0.17.3",
- "url",
-]
-
-[[package]]
-name = "nostr_rust"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d85cff9cbac0b4aed9848e99ee2fd9c9d90b60104706752401d2b312dc4e4cc8"
@@ -810,7 +788,7 @@ dependencies = [
  "serde_json",
  "sha256",
  "thiserror",
- "tungstenite 0.18.0",
+ "tungstenite",
  "url",
 ]
 
@@ -825,7 +803,7 @@ dependencies = [
  "env_logger",
  "hex",
  "log",
- "nostr_rust 0.11.0",
+ "nostr_rust",
  "rand",
  "secp256k1",
  "serde",
@@ -846,7 +824,7 @@ dependencies = [
  "env_logger",
  "hex",
  "log",
- "nostr_rust 0.12.0",
+ "nostr_rust",
  "nostrdizer",
  "rand",
  "serde",
@@ -1189,17 +1167,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha-1"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5058ada175748e33390e40e872bd0fe59a19f265d0158daa551c5a88a76009c"
-dependencies = [
- "cfg-if",
- "cpufeatures",
- "digest 0.10.6",
-]
-
-[[package]]
 name = "sha1"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1403,28 +1370,6 @@ name = "try-lock"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
-
-[[package]]
-name = "tungstenite"
-version = "0.17.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e27992fd6a8c29ee7eef28fc78349aa244134e10ad447ce3b9f0ac0ed0fa4ce0"
-dependencies = [
- "base64",
- "byteorder",
- "bytes",
- "http",
- "httparse",
- "log",
- "rand",
- "rustls",
- "sha-1",
- "thiserror",
- "url",
- "utf-8",
- "webpki",
- "webpki-roots",
-]
 
 [[package]]
 name = "tungstenite"

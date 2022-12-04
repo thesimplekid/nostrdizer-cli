@@ -8,7 +8,8 @@ chrono = { version = "0.4.22", features = ["serde"] }
 serde = { version = "1.0.147", features = ["derive"] }
 secp256k1 = { version = "0.24", features = ["bitcoin_hashes", "global-context", "rand-std"] }
 serde_json = "1.0.87"
-nostr_rust = { git = "https://github.com/thesimplekid/nostr_rust", branch = "nostrdizer"}
+# nostr_rust = { git = "https://github.com/thesimplekid/nostr_rust", branch = "nostrdizer"}
+nostr_rust = "0.12.0"
 thiserror = "1"
 url = "2"
 bitcoin = "0.29.2"
