@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use rand::{thread_rng, Rng};
 use std::io::Write;
 
+use anyhow::{bail, Result};
 use bitcoin::Amount;
 
 /// CLI for joinstr
@@ -90,7 +91,7 @@ enum Commands {
         will_broadcast: Option<bool>,
     },
 }
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(
@@ -201,7 +202,7 @@ fn main() -> anyhow::Result<()> {
             number_of_makers,
         } => {
             let mut taker = taker::Taker::new(&priv_key, relay_urls, bitcoin_core_creds)?;
-            // TODO: Should filter peers by rate
+
             let number_of_makers = match number_of_makers {
                 Some(num) => *num,
                 None => {
@@ -209,74 +210,69 @@ fn main() -> anyhow::Result<()> {
                     rng.gen_range(3..9)
                 }
             };
+
             let send_amount = Amount::from_sat(*send_amount);
+
+            println!(
+                "Looking for offers to send {} with {} peers.",
+                send_amount, number_of_makers
+            );
             // REVIEW: if there are no matching offers it just ends
             let matching_peers = taker.get_matching_offers(send_amount)?;
             debug!("Matching peers {:?}", matching_peers);
+            println!("{} makers matched your order", matching_peers.len());
 
             let mut matched_peers = HashMap::new();
             if matching_peers.is_empty() {
-                println!("There are no makers that match this send")
-            } else {
-                for (i, peer) in matching_peers.iter().enumerate() {
-                    debug!("Peer: {:?}", peer);
-                    taker.send_fill_offer_message(
-                        FillOffer {
-                            offer_id: peer.1.offer_id,
-                            amount: send_amount,
-                        },
-                        &peer.0,
-                    )?;
-                    matched_peers.insert(peer.0.clone(), peer.1);
-
-                    if i > number_of_makers {
-                        break;
-                    }
-                }
-                debug!("Send fills");
-
-                // wait for responses from peers
-                // Gets peers psbt inputs
-                // loops until enough peers have responded
-                let peer_inputs = taker.get_peer_inputs(number_of_makers)?;
-                // debug!("Peer input psbts: {:?}", peer_psbts_hash);
-                // Create taker psbt
-                // Setting fee rate as none uses core's fee estimation
-                // TODO: get the size of the transaction including all peer inputs
-                //let fee_rate = Some(Amount::from_sat(5000));
-                //let taker_psbt = taker.get_input_psbt(*send_amount, fee_rate)?;
-
-                // converts maker inputs to vec of string maker psbts
-                //let mut psbts: Vec<String> = peer_psbts_hash
-                //    .values()
-                //    .map(|maker_input| maker_input.psbt.to_string())
-                //    .collect();
-                //psbts.push(taker_psbt.psbt);
-                //
-                let cj = taker.create_cj(send_amount, peer_inputs, matched_peers.clone())?;
-
-                // Join maker psbts with taker psbt
-                // let joined_psbt = taker.join_psbt(psbts)?;
-                // debug!("combined_psbt: {:?}", joined_psbt);
-                // Send unsigned psbt to peers
-                for (pub_key, maker_input) in matched_peers {
-                    taker.send_unsigned_psbt(&pub_key, maker_input.offer_id, &cj)?;
-                }
-                // Wait for signed psbts
-                // Combine signed psbt
-                let peer_signed_psbt = taker.get_signed_peer_psbts(number_of_makers)?;
-                info!("Makers have signed transaction, signing ...");
-                // Taker Sign psbt
-                let signed_psbt = taker.verify_and_sign_psbt(send_amount, &peer_signed_psbt)?;
-                debug!("Taker signed: {:?}", signed_psbt);
-                // Broadcast signed psbt
-
-                let finalized_psbt = taker.finalize_psbt(&signed_psbt.psbt)?;
-                // debug!("Finalized psbt: {:?}", finalized_psbt);
-
-                let txid = taker.broadcast_transaction(finalized_psbt).unwrap();
-                debug!("TXID: {:?}", txid);
+                bail!("There are no makers that match this order")
             }
+
+            println!("Choosing {} peers with the lowest fee", number_of_makers);
+            for (i, peer) in matching_peers.iter().enumerate() {
+                debug!("Peer: {:?} Offer: {:?}", peer.0, peer.1);
+                taker.send_fill_offer_message(
+                    FillOffer {
+                        offer_id: peer.1.offer_id,
+                        amount: send_amount,
+                    },
+                    &peer.0,
+                )?;
+                matched_peers.insert(peer.0.clone(), peer.1);
+
+                if i > number_of_makers {
+                    break;
+                }
+            }
+            println!("Sent fill offers to peers");
+            println!("Waiting for peer inputs...");
+
+            // wait for responses from peers
+            // Gets peers psbt inputs
+            // loops until enough peers have responded
+            let peer_inputs = taker.get_peer_inputs(number_of_makers)?;
+            println!("Peers have sent inputs creating transaction...");
+
+            let cj = taker.create_cj(send_amount, peer_inputs, matched_peers.clone())?;
+
+            // Send unsigned psbt to peers
+            for (pub_key, maker_input) in matched_peers {
+                taker.send_unsigned_psbt(&pub_key, maker_input.offer_id, &cj)?;
+            }
+
+            println!("Waiting for peer signatures...");
+            // Wait for signed psbts
+            // Combine signed psbt
+            let peer_signed_psbt = taker.get_signed_peer_psbts(number_of_makers)?;
+            println!("Makers have signed transaction, signing ...");
+
+            // Taker Sign psbt
+            let signed_psbt = taker.verify_and_sign_psbt(send_amount, &peer_signed_psbt)?;
+            let finalized_psbt = taker.finalize_psbt(&signed_psbt.psbt)?;
+            println!("Finalized transaction, broadcasting ...");
+
+            // Broadcast signed psbt
+            let txid = taker.broadcast_transaction(finalized_psbt).unwrap();
+            println!("TXID: {:?}", txid);
         }
         Commands::RunMaker {
             abs_fee,
@@ -348,35 +344,32 @@ fn main() -> anyhow::Result<()> {
                 will_broadcast,
             };
             // TODO: check if offer is published if not prompt to publish
-            println!("Listening...");
 
             let mut maker = Maker::new(&priv_key, relay_urls, &mut config, bitcoin_core_creds)?;
 
             let active_offer = maker.get_active_offer()?;
 
-            if let Some(active_offer) = active_offer {
-                // TODO Replace current offer with new offer
-                info!("Running maker with offer: {:?}", active_offer);
-            } else {
-                maker.publish_offer()?;
-            }
+            // Should maybe just always replace with a new offer
+            let offer = match active_offer {
+                Some(offer) => offer,
+                None => maker.publish_offer()?,
+            };
+
+            println!("Running maker with {:?}", offer);
+            println!("Wailing for takers...");
 
             let (peer_pubkey, fill_offer) = maker.get_fill_offer()?;
 
-            debug!("Fill Offer: {:?}", fill_offer);
+            println!("Received fill Offer: {:?}", fill_offer);
 
             let maker_input = maker.get_inputs(&fill_offer)?;
-            // debug!("Maker psbt {:?}", maker_psbt);
-
-            // let psbt_string = serde_json::to_string(&maker_psbt)?;
-            // debug!("Psbt string: {:?}", psbt_string);
             maker.send_maker_input(&peer_pubkey, maker_input)?;
             debug!("Sent");
 
             let unsigned_psbt = maker.get_unsigned_cj_psbt()?;
-            debug!("Unsigned psbt: {:?}", unsigned_psbt);
 
             let signed_psbt = maker.verify_and_sign_psbt(&fill_offer, &unsigned_psbt)?;
+            debug!("Signed psbt: {:?}", signed_psbt);
 
             maker.send_signed_psbt(&peer_pubkey, fill_offer, &signed_psbt)?;
         }

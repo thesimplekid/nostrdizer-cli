@@ -82,7 +82,7 @@ impl Maker {
         Ok(maker)
     }
 
-    pub fn publish_offer(&mut self) -> Result<(), Error> {
+    pub fn publish_offer(&mut self) -> Result<Offer, Error> {
         let mut rng = thread_rng();
 
         let maxsize = match self.config.maxsize {
@@ -120,7 +120,7 @@ impl Maker {
 
         self.nostr_client.publish_event(&event)?;
 
-        Ok(())
+        Ok(offer)
     }
 
     /// Get active offer
