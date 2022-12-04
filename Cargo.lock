@@ -787,7 +787,30 @@ dependencies = [
  "serde_json",
  "sha256",
  "thiserror",
- "tungstenite",
+ "tungstenite 0.17.3",
+ "url",
+]
+
+[[package]]
+name = "nostr_rust"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d85cff9cbac0b4aed9848e99ee2fd9c9d90b60104706752401d2b312dc4e4cc8"
+dependencies = [
+ "aes",
+ "base64",
+ "bech32",
+ "cbc",
+ "hex",
+ "rand",
+ "reqwest",
+ "secp256k1",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "sha256",
+ "thiserror",
+ "tungstenite 0.18.0",
  "url",
 ]
 
@@ -802,7 +825,7 @@ dependencies = [
  "env_logger",
  "hex",
  "log",
- "nostr_rust",
+ "nostr_rust 0.11.0",
  "rand",
  "secp256k1",
  "serde",
@@ -823,7 +846,7 @@ dependencies = [
  "env_logger",
  "hex",
  "log",
- "nostr_rust",
+ "nostr_rust 0.12.0",
  "nostrdizer",
  "rand",
  "serde",
@@ -1177,6 +1200,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f04293dc80c3993519f2d7f6f511707ee7094fe0c6d3406feb330cdb3540eba3"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest 0.10.6",
+]
+
+[[package]]
 name = "sha2"
 version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1385,6 +1419,28 @@ dependencies = [
  "rand",
  "rustls",
  "sha-1",
+ "thiserror",
+ "url",
+ "utf-8",
+ "webpki",
+ "webpki-roots",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30ee6ab729cd4cf0fd55218530c4522ed30b7b6081752839b68fcec8d0960788"
+dependencies = [
+ "base64",
+ "byteorder",
+ "bytes",
+ "http",
+ "httparse",
+ "log",
+ "rand",
+ "rustls",
+ "sha1",
  "thiserror",
  "url",
  "utf-8",

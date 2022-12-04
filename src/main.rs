@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
 use std::{collections::HashMap, env, panic};
 
-use log::{debug, info, LevelFilter};
+use log::{debug, LevelFilter};
 use nostrdizer::{
     maker::{Config as MakerConfig, Maker},
     taker,
@@ -20,9 +20,9 @@ use std::io::Write;
 use anyhow::{bail, Result};
 use bitcoin::Amount;
 
-/// CLI for joinstr
+/// CLI for nostrdizer
 #[derive(Parser, Debug, Serialize, Deserialize)]
-#[command(name = "nostr-tool")]
+#[command(name = "nostrdizer")]
 #[command(author = "thesimplekid tsk@thesimplekid.com")]
 #[command(version = "0.1")]
 #[command(author, version, about, long_about = None)]
@@ -106,12 +106,9 @@ fn main() -> Result<()> {
         })
         .filter(Some("nostrdizer"), LevelFilter::Debug)
         .init();
-    debug!("Main");
     // Parse input
     let args: Cli = Cli::parse();
     dotenv().ok();
-
-    // let wallet_name = args.wallet_name;
 
     let rpc_url = match args.rpc_url {
         Some(url) => url,
