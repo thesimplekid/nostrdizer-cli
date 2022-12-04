@@ -281,7 +281,6 @@ impl Taker {
             Err(_) => Amount::from_sat(500),
         };
         debug!("Mining fee: {:?}", mining_fee);
-        debug!("{} {} {} {}", taker_inputs.0, send_amount, total_maker_fees, mining_fee);
         let taker_change = taker_inputs.0 - send_amount - total_maker_fees - mining_fee;
         outputs.insert(taker_change_out.to_string(), taker_change);
 
