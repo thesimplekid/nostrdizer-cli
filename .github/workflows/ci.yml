@@ -1,0 +1,40 @@
+
+name: CI
+
+on:
+  pull_request_target:
+  workflow_call:
+  push:
+    branches:
+      - main
+jobs:
+  style:
+    name: Check Style
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        if: github.event_name == 'pull_request_target'
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/checkout@v3
+        if: github.event_name != 'pull_request_target'
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt
+          profile: minimal
+          override: true
+
+      - name: cargo fmt -- --check
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: -- --check
+
+      - name: temporary workaround - fmt all files under src
+        run: cargo fmt -- --check $(find . -name '*.rs' -print)
