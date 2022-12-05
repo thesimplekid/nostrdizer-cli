@@ -2,12 +2,12 @@ use crate::{
     errors::Error,
     types::{
         BitcoinCoreCreditals, FillOffer, MakerInput, NostrdizerMessage, NostrdizerMessageKind,
-        NostrdizerMessages, Offer, Psbt,
+        NostrdizerMessages, Offer, Psbt, VerifyCJInfo,
     },
     utils,
 };
 
-use bitcoin::{Amount, XOnlyPublicKey};
+use bitcoin::{Amount, Denomination, XOnlyPublicKey};
 
 use bitcoincore_rpc_json::{
     CreateRawTransactionInput, FinalizePsbtResult, ListUnspentResultEntry,
@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 struct Config {
-    max_rel_fee: f32,
+    max_rel_fee: f64,
     max_abs_fee: Amount,
 }
 
@@ -43,16 +43,15 @@ impl Taker {
         relay_urls: Vec<&str>,
         bitcoin_core_creds: BitcoinCoreCreditals,
     ) -> Result<Self, Error> {
-        let identity = Identity::from_str(priv_key).unwrap();
-        let nostr_client = NostrClient::new(relay_urls).unwrap();
+        let identity = Identity::from_str(priv_key)?;
+        let nostr_client = NostrClient::new(relay_urls)?;
         let rpc_client = RPCClient::new(
             &bitcoin_core_creds.rpc_url,
             Auth::UserPass(
                 bitcoin_core_creds.rpc_username,
                 bitcoin_core_creds.rpc_password,
             ),
-        )
-        .unwrap();
+        )?;
         let config = Config {
             // TODO: Get this from config
             max_rel_fee: 0.30,
@@ -67,10 +66,12 @@ impl Taker {
         Ok(taker)
     }
 
+    /// Get balance eligible (2 confirmations) for CJ
     pub fn get_eligible_balance(&mut self) -> Result<Amount, Error> {
         utils::get_eligible_balance(&self.rpc_client)
     }
 
+    /// Get unspent UTXOs
     pub fn get_unspent(&mut self) -> Result<Vec<ListUnspentResultEntry>, Error> {
         utils::get_unspent(&self.rpc_client)
     }
@@ -240,7 +241,8 @@ impl Taker {
 
             let maker_offer = maker_offers.get(&maker).unwrap();
             let maker_fee = Amount::from_sat(
-                (send_amount.to_sat() as f32 * maker_offer.rel_fee).floor() as u64,
+                (send_amount.to_float_in(Denomination::Satoshi) * maker_offer.rel_fee).floor()
+                    as u64,
             ) + maker_offer.abs_fee;
             total_maker_fees += maker_fee;
             let change_value = maker_input_val - send_amount + maker_fee;
@@ -280,7 +282,7 @@ impl Taker {
             }
             Err(_) => Amount::from_sat(500),
         };
-        debug!("Mining fee: {:?}", mining_fee);
+        debug!("Mining fee: {:?} sats", mining_fee.to_sat());
         let taker_change = taker_inputs.0 - send_amount - total_maker_fees - mining_fee;
         outputs.insert(taker_change_out.to_string(), taker_change);
 
@@ -335,11 +337,13 @@ impl Taker {
         // Sorts so lowest fee maker is first
         // Not sure how efficient this is
         matching_offers.sort_by(|a, b| {
-            (a.1.rel_fee * send_amount.to_sat() as f32 + a.1.abs_fee.to_sat() as f32)
-                .partial_cmp(
-                    &(b.1.rel_fee * send_amount.to_sat() as f32 + b.1.abs_fee.to_sat() as f32),
-                )
-                .unwrap()
+            (a.1.rel_fee * send_amount.to_float_in(Denomination::Satoshi)
+                + a.1.abs_fee.to_float_in(Denomination::Satoshi))
+            .partial_cmp(
+                &(b.1.rel_fee * send_amount.to_float_in(Denomination::Satoshi)
+                    + b.1.abs_fee.to_float_in(Denomination::Satoshi)),
+            )
+            .unwrap()
         });
 
         Ok(matching_offers)
@@ -404,41 +408,51 @@ impl Taker {
         Ok(self.rpc_client.finalize_psbt(psbt, None)?)
     }
 
-    /// Verify and sign psbt
-    pub fn verify_and_sign_psbt(
+    /// Verify that taker does not pay more the set fee for CJ
+    pub fn verify_psbt(
         &mut self,
         send_amount: Amount,
         unsigned_psbt: &str,
-    ) -> Result<WalletProcessPsbtResult, Error> {
-        let decoded_transaction = self.rpc_client.decode_psbt(unsigned_psbt).unwrap();
+    ) -> Result<VerifyCJInfo, Error> {
+        let decoded_transaction = self.rpc_client.decode_psbt(unsigned_psbt)?;
         let tx = decoded_transaction.tx;
         let input_value = utils::get_my_input_value(tx.vin, &self.rpc_client)?;
         let output_value = utils::get_my_output_value(tx.vout, &self.rpc_client)?;
         info!("Taker is spending {} sats", input_value.to_sat());
         info!("Taker is receiving {} sats", output_value.to_sat());
 
-        let fee = input_value - output_value;
+        let mining_fee = match decoded_transaction.fee {
+            Some(fee) => fee,
+            None => Amount::ZERO,
+        };
 
-        if fee > self.config.max_abs_fee {
-            panic!()
-        }
+        let total_fee_to_makers: Amount = input_value - output_value - mining_fee;
 
-        let fee_as_percent = fee.to_sat() as f32 / send_amount.to_sat() as f32;
+        let abs_fee_check = total_fee_to_makers.lt(&self.config.max_abs_fee);
+
+        let fee_as_percent = total_fee_to_makers.to_float_in(Denomination::Satoshi)
+            / send_amount.to_float_in(Denomination::Satoshi);
 
         info!("Relative fee: {}", fee_as_percent);
-        // REVIEW: account for mining fee
-        if fee_as_percent > self.config.max_rel_fee {
-            panic!()
-        }
+        let rel_fee_check = fee_as_percent.lt(&self.config.max_rel_fee);
 
+        Ok(VerifyCJInfo {
+            mining_fee,
+            total_fee_to_makers,
+            verifyed: abs_fee_check && rel_fee_check,
+        })
+    }
+
+    /// Sign psbt
+    pub fn sign_psbt(&mut self, unsigned_psbt: &str) -> Result<WalletProcessPsbtResult, Error> {
         utils::sign_psbt(unsigned_psbt, &self.rpc_client)
     }
 
+    /// Broadcast transaction
     pub fn broadcast_transaction(
         &mut self,
         final_psbt: FinalizePsbtResult,
     ) -> Result<bitcoin::Txid, Error> {
-        log::debug!("{:?}", final_psbt);
         if let Some(final_hex) = final_psbt.hex {
             Ok(self.rpc_client.send_raw_transaction(&final_hex)?)
         } else {

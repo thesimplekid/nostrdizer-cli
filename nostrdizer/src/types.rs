@@ -10,7 +10,7 @@ pub struct Offer {
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
     pub abs_fee: Amount,
     /// Percent of send amount fee to maker
-    pub rel_fee: f32,
+    pub rel_fee: f64,
     /// Min size of coinjoin for maker
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
     pub minsize: Amount,
@@ -74,4 +74,13 @@ pub struct BitcoinCoreCreditals {
     pub rpc_url: String,
     pub rpc_username: String,
     pub rpc_password: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VerifyCJInfo {
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    pub mining_fee: Amount,
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    pub total_fee_to_makers: Amount,
+    pub verifyed: bool,
 }

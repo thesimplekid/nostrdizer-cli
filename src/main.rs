@@ -82,7 +82,7 @@ enum Commands {
         #[arg(long)]
         abs_fee: Option<u64>,
         #[arg(long)]
-        rel_fee: Option<f32>,
+        rel_fee: Option<f64>,
         #[arg(long)]
         minsize: Option<u64>,
         #[arg(long)]
@@ -211,8 +211,9 @@ fn main() -> Result<()> {
             let send_amount = Amount::from_sat(*send_amount);
 
             println!(
-                "Looking for offers to send {} with {} peers.",
-                send_amount, number_of_makers
+                "Looking for offers to send {} sats with {} peers.",
+                send_amount.to_sat(),
+                number_of_makers
             );
             // REVIEW: if there are no matching offers it just ends
             let matching_peers = taker.get_matching_offers(send_amount)?;
@@ -263,13 +264,27 @@ fn main() -> Result<()> {
             println!("Makers have signed transaction, signing ...");
 
             // Taker Sign psbt
-            let signed_psbt = taker.verify_and_sign_psbt(send_amount, &peer_signed_psbt)?;
-            let finalized_psbt = taker.finalize_psbt(&signed_psbt.psbt)?;
-            println!("Finalized transaction, broadcasting ...");
+            if let Ok(psbt_info) = taker.verify_psbt(send_amount, &peer_signed_psbt) {
+                println!(
+                    "Total fee to makers: {} sats.",
+                    psbt_info.total_fee_to_makers
+                );
+                println!("Mining fee: {} sats", psbt_info.mining_fee.to_sat());
+                if psbt_info.verifyed {
+                    println!("Transaction passed verification, signing ...");
+                    let signed_psbt = taker.sign_psbt(&peer_signed_psbt)?;
+                    let finalized_psbt = taker.finalize_psbt(&signed_psbt.psbt)?;
+                    println!("Finalized transaction, broadcasting ...");
 
-            // Broadcast signed psbt
-            let txid = taker.broadcast_transaction(finalized_psbt).unwrap();
-            println!("TXID: {:?}", txid);
+                    // Broadcast signed psbt
+                    let txid = taker.broadcast_transaction(finalized_psbt).unwrap();
+                    println!("TXID: {:?}", txid);
+                } else {
+                    bail!("Transaction could not be verified")
+                }
+            } else {
+                bail!("Transaction could not be verified")
+            }
         }
         Commands::RunMaker {
             abs_fee,
@@ -293,7 +308,7 @@ fn main() -> Result<()> {
                 Some(rel_fee) => *rel_fee,
                 None => {
                     if let Ok(rel_fee) = env::var("MAKER_REL_FEE") {
-                        rel_fee.parse::<f32>()?
+                        rel_fee.parse::<f64>()?
                     } else {
                         0.0
                     }

@@ -15,8 +15,8 @@ use nostr_rust::{
     Identity,
 };
 
-use bitcoin::Amount;
 use bitcoin::XOnlyPublicKey;
+use bitcoin::{Amount, Denomination};
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::{WalletCreateFundedPsbtResult, WalletProcessPsbtResult};
 
@@ -33,7 +33,7 @@ use rand::{thread_rng, Rng};
 pub struct Config {
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
     pub abs_fee: Amount,
-    pub rel_fee: f32,
+    pub rel_fee: f64,
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
     pub minsize: Amount,
     #[serde(default, with = "bitcoin::util::amount::serde::as_btc::opt")]
@@ -65,8 +65,7 @@ impl Maker {
                 bitcoin_core_creds.rpc_username,
                 bitcoin_core_creds.rpc_password,
             ),
-        )
-        .unwrap();
+        )?;
 
         if config.maxsize.is_none() {
             let bal = utils::get_eligible_balance(&rpc_client)?;
@@ -298,7 +297,7 @@ impl Maker {
         fill_offer: &FillOffer,
         unsigned_psbt: &str,
     ) -> Result<WalletProcessPsbtResult, Error> {
-        let decoded_tranaction = self.rpc_client.decode_psbt(unsigned_psbt).unwrap();
+        let decoded_tranaction = self.rpc_client.decode_psbt(unsigned_psbt)?;
 
         let tx = decoded_tranaction.tx;
 
@@ -308,9 +307,11 @@ impl Maker {
         info!("Maker is receiving {} sats", output_value.to_sat());
 
         // NOTE: this assumes rel fee in format .015 for 1.5%
-        let rel_fee = (fill_offer.amount.to_sat() as f32 * self.config.rel_fee).floor() as u64;
+        let rel_fee_sats = (fill_offer.amount.to_float_in(Denomination::Satoshi)
+            * self.config.rel_fee)
+            .floor() as u64;
 
-        let required_fee = self.config.abs_fee + Amount::from_sat(rel_fee);
+        let required_fee = self.config.abs_fee + Amount::from_sat(rel_fee_sats);
 
         // Ensures maker is getting input + their set fee
         if output_value < (input_value + required_fee) {
