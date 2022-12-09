@@ -1,8 +1,8 @@
 use crate::{
     errors::Error,
     types::{
-        BitcoinCoreCreditals, FillOffer, MakerInput, NostrdizerMessage, NostrdizerMessageKind,
-        NostrdizerMessages, Offer,
+        BitcoinCoreCreditals, CJFee, FillOffer, MakerInput, NostrdizerMessage,
+        NostrdizerMessageKind, NostrdizerMessages, Offer, VerifyCJInfo,
     },
     utils,
 };
@@ -292,42 +292,26 @@ impl Maker {
     }
 
     /// Maker verify and sign Psbt
-    pub fn verify_and_sign_psbt(
+    pub fn verify_psbt(
         &mut self,
         fill_offer: &FillOffer,
         unsigned_psbt: &str,
-    ) -> Result<WalletProcessPsbtResult, Error> {
-        let decoded_tranaction = self.rpc_client.decode_psbt(unsigned_psbt).unwrap();
+    ) -> Result<VerifyCJInfo, Error> {
+        let cj_fee = CJFee {
+            abs_fee: self.config.abs_fee,
+            rel_fee: self.config.rel_fee,
+        };
 
-        let tx = decoded_tranaction.tx;
+        utils::verify_psbt(
+            unsigned_psbt,
+            fill_offer.amount,
+            utils::Role::Maker(cj_fee, self.config.minsize, self.config.maxsize),
+            &self.rpc_client,
+        )
+    }
 
-        let input_value = utils::get_my_input_value(tx.vin, &self.rpc_client)?;
-        let output_value = utils::get_my_output_value(tx.vout, &self.rpc_client)?;
-        info!("Maker is spending {} sats", input_value.to_sat());
-        info!("Maker is receiving {} sats", output_value.to_sat());
-
-        // NOTE: this assumes rel fee in format .015 for 1.5%
-        let rel_fee_sats = (fill_offer.amount.to_float_in(Denomination::Satoshi)
-            * self.config.rel_fee)
-            .floor() as u64;
-
-        let required_fee = self.config.abs_fee + Amount::from_sat(rel_fee_sats);
-
-        // Ensures maker is getting input + their set fee
-        if output_value < (input_value + required_fee) {
-            return Err(Error::OutputValueLessExpected);
-        }
-
-        if let Some(maxsize) = self.config.maxsize {
-            if fill_offer.amount > maxsize {
-                return Err(Error::CJValueOveMax);
-            }
-        }
-
-        if fill_offer.amount < self.config.minsize {
-            return Err(Error::CJValueBelowMin);
-        }
-
+    /// Sign psbt
+    pub fn sign_psbt(&mut self, unsigned_psbt: &str) -> Result<WalletProcessPsbtResult, Error> {
         utils::sign_psbt(unsigned_psbt, &self.rpc_client)
     }
 

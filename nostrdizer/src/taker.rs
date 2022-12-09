@@ -1,8 +1,8 @@
 use crate::{
     errors::Error,
     types::{
-        BitcoinCoreCreditals, FillOffer, MakerInput, NostrdizerMessage, NostrdizerMessageKind,
-        NostrdizerMessages, Offer, Psbt, VerifyCJInfo,
+        BitcoinCoreCreditals, CJFee, FillOffer, MakerInput, MaxMineingFee, NostrdizerMessage,
+        NostrdizerMessageKind, NostrdizerMessages, Offer, Psbt, VerifyCJInfo,
     },
     utils,
 };
@@ -26,8 +26,9 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 struct Config {
-    max_rel_fee: f64,
-    max_abs_fee: Amount,
+    cj_fee: CJFee,
+    mining_fee: MaxMineingFee, // max_rel_fee: f64,
+                               // max_abs_fee: Amount,
 }
 
 pub struct Taker {
@@ -54,8 +55,14 @@ impl Taker {
         )?;
         let config = Config {
             // TODO: Get this from config
-            max_rel_fee: 0.30,
-            max_abs_fee: Amount::from_sat(5000),
+            cj_fee: CJFee {
+                rel_fee: 0.30,
+                abs_fee: Amount::from_sat(5000),
+            },
+            mining_fee: MaxMineingFee {
+                abs_fee: Amount::from_sat(5000),
+                rel_fee: 0.20,
+            },
         };
         let taker = Self {
             identity,
@@ -241,7 +248,7 @@ impl Taker {
 
             let maker_offer = maker_offers.get(&maker).unwrap();
             let maker_fee = Amount::from_sat(
-                (send_amount.to_float_in(Denomination::Satoshi) * maker_offer.rel_fee).floor()
+                (send_amount.to_float_in(Denomination::Satoshi) * maker_offer.rel_fee).ceil()
                     as u64,
             ) + maker_offer.abs_fee;
             total_maker_fees += maker_fee;
@@ -329,8 +336,8 @@ impl Taker {
             .filter(|(_k, offer)| {
                 offer.maxsize > send_amount
                     && offer.minsize < send_amount
-                    && offer.rel_fee < self.config.max_rel_fee
-                    && offer.abs_fee < self.config.max_abs_fee
+                    && offer.rel_fee < self.config.cj_fee.rel_fee
+                    && offer.abs_fee < self.config.cj_fee.abs_fee
             })
             .collect();
 
@@ -414,34 +421,22 @@ impl Taker {
         send_amount: Amount,
         unsigned_psbt: &str,
     ) -> Result<VerifyCJInfo, Error> {
-        let decoded_transaction = self.rpc_client.decode_psbt(unsigned_psbt).unwrap();
-        let tx = decoded_transaction.tx;
-        println!("{:?}", tx);
-        let input_value = utils::get_my_input_value(tx.vin, &self.rpc_client)?;
-        let output_value = utils::get_my_output_value(tx.vout, &self.rpc_client)?;
-        info!("Taker is spending {} sats", input_value.to_sat());
-        info!("Taker is receiving {} sats", output_value.to_sat());
-
-        let mining_fee = match decoded_transaction.fee {
-            Some(fee) => fee,
-            None => Amount::ZERO,
+        let cj_fee = CJFee {
+            abs_fee: self.config.cj_fee.abs_fee,
+            rel_fee: self.config.cj_fee.rel_fee,
         };
 
-        let total_fee_to_makers: Amount = input_value - output_value - mining_fee;
+        let mining_fee = MaxMineingFee {
+            abs_fee: self.config.mining_fee.abs_fee,
+            rel_fee: self.config.mining_fee.rel_fee,
+        };
 
-        let abs_fee_check = total_fee_to_makers.lt(&self.config.max_abs_fee);
-
-        let fee_as_percent = total_fee_to_makers.to_float_in(Denomination::Satoshi)
-            / send_amount.to_float_in(Denomination::Satoshi);
-
-        info!("Relative fee: {}", fee_as_percent);
-        let rel_fee_check = fee_as_percent.lt(&self.config.max_rel_fee);
-
-        Ok(VerifyCJInfo {
-            mining_fee,
-            total_fee_to_makers,
-            verifyed: abs_fee_check && rel_fee_check,
-        })
+        utils::verify_psbt(
+            unsigned_psbt,
+            send_amount,
+            utils::Role::Taker(cj_fee, mining_fee),
+            &self.rpc_client,
+        )
     }
 
     /// Sign psbt

@@ -1,4 +1,4 @@
-use bitcoin::{Address, Amount, Txid};
+use bitcoin::{Address, Amount, SignedAmount, Txid};
 use serde::{Deserialize, Serialize};
 
 /// Info for maker offer
@@ -79,8 +79,22 @@ pub struct BitcoinCoreCreditals {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VerifyCJInfo {
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
-    pub mining_fee: Amount,
+    pub mining_fee: SignedAmount,
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
-    pub total_fee_to_makers: Amount,
+    pub maker_fee: SignedAmount,
     pub verifyed: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CJFee {
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    pub abs_fee: Amount,
+    pub rel_fee: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MaxMineingFee {
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    pub abs_fee: Amount,
+    pub rel_fee: f64,
 }

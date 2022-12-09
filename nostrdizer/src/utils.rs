@@ -1,6 +1,9 @@
 use crate::errors::Error;
-use crate::types::{NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Psbt};
-use bitcoin::Amount;
+use crate::types::{
+    CJFee, MaxMineingFee, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Psbt,
+    VerifyCJInfo,
+};
+use bitcoin::{Amount, Denomination, SignedAmount};
 use bitcoincore_rpc::{Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::{
     CreateRawTransactionInput, GetRawTransactionResultVin, GetRawTransactionResultVout,
@@ -175,4 +178,71 @@ pub fn get_my_output_value(
     }
 
     Ok(output_value)
+}
+pub enum Role {
+    Maker(CJFee, Amount, Option<Amount>),
+    Taker(CJFee, MaxMineingFee),
+}
+
+pub fn verify_psbt(
+    unsigned_psbt: &str,
+    send_amount: Amount,
+    role: Role,
+    rpc_client: &RPCClient,
+) -> Result<VerifyCJInfo, Error> {
+    let decoded_transaction = rpc_client.decode_psbt(unsigned_psbt).unwrap();
+    let tx = decoded_transaction.tx;
+    let input_value = get_my_input_value(tx.vin, rpc_client)?;
+    let output_value = get_my_output_value(tx.vout, rpc_client)?;
+
+    let mining_fee = decoded_transaction
+        .fee
+        .unwrap_or(Amount::ZERO)
+        .to_signed()?;
+
+    match role {
+        Role::Maker(cj_fee, min_size, max_size) => {
+            let maker_fee = output_value.to_signed()? - input_value.to_signed()?;
+            debug!("Maker fee: {maker_fee}");
+            let abs_fee_check = maker_fee.ge(&cj_fee.abs_fee.to_signed()?);
+            debug!("abs value check {abs_fee_check}");
+            let fee_as_percent = maker_fee.to_float_in(Denomination::Satoshi)
+                / send_amount.to_float_in(Denomination::Satoshi);
+
+            debug!("Fee as percent {:?}", fee_as_percent);
+            let rel_fee_check = fee_as_percent.ge(&cj_fee.rel_fee);
+
+            debug!("rel fee check {rel_fee_check}");
+            // Max send amount check
+            let max_amount_check = match max_size {
+                Some(max_size) => send_amount <= max_size,
+                None => true,
+            };
+            debug!("Max amount {max_amount_check}");
+            Ok(VerifyCJInfo {
+                mining_fee,
+                maker_fee,
+                verifyed: abs_fee_check
+                    && rel_fee_check
+                    && max_amount_check
+                    && send_amount.ge(&min_size),
+            })
+        }
+        Role::Taker(cj_fee, max_mineing_fee) => {
+            let maker_fee: SignedAmount =
+                input_value.to_signed()? - output_value.to_signed()? - mining_fee;
+            let abs_fee_check = maker_fee.lt(&cj_fee.abs_fee.to_signed()?);
+            let fee_as_percent = maker_fee.to_float_in(Denomination::Satoshi)
+                / send_amount.to_float_in(Denomination::Satoshi);
+
+            let rel_fee_check = fee_as_percent.lt(&cj_fee.rel_fee);
+            Ok(VerifyCJInfo {
+                mining_fee,
+                maker_fee,
+                verifyed: abs_fee_check
+                    && rel_fee_check
+                    && mining_fee.lt(&max_mineing_fee.abs_fee.to_signed()?),
+            })
+        }
+    }
 }

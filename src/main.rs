@@ -265,10 +265,7 @@ fn main() -> Result<()> {
 
             // Taker Sign psbt
             if let Ok(psbt_info) = taker.verify_psbt(send_amount, &peer_signed_psbt) {
-                println!(
-                    "Total fee to makers: {} sats.",
-                    psbt_info.total_fee_to_makers
-                );
+                println!("Total fee to makers: {} sats.", psbt_info.maker_fee);
                 println!("Mining fee: {} sats", psbt_info.mining_fee.to_sat());
                 if psbt_info.verifyed {
                     println!("Transaction passed verification, signing ...");
@@ -380,10 +377,14 @@ fn main() -> Result<()> {
 
             let unsigned_psbt = maker.get_unsigned_cj_psbt()?;
 
-            let signed_psbt = maker.verify_and_sign_psbt(&fill_offer, &unsigned_psbt)?;
-            debug!("Signed psbt: {:?}", signed_psbt);
-
-            maker.send_signed_psbt(&peer_pubkey, fill_offer, &signed_psbt)?;
+            if let Ok(psbt_info) = maker.verify_psbt(&fill_offer, &unsigned_psbt) {
+                if psbt_info.verifyed {
+                    let signed_psbt = maker.sign_psbt(&unsigned_psbt)?;
+                    maker.send_signed_psbt(&peer_pubkey, fill_offer, &signed_psbt)?;
+                } else {
+                    bail!("Transaction could not be verified");
+                }
+            }
         }
     }
     Ok(())

@@ -1,3 +1,4 @@
+use bitcoin::util::amount::ParseAmountError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -40,6 +41,9 @@ pub enum Error {
 
     #[error("Could not convert from string")]
     FromStringError(std::string::String),
+
+    #[error("Could not parse amount")]
+    CouldNotParseError(ParseAmountError),
 }
 
 impl From<bitcoincore_rpc::Error> for Error {
@@ -75,5 +79,11 @@ impl From<bitcoin::secp256k1::Error> for Error {
 impl From<std::string::String> for Error {
     fn from(err: std::string::String) -> Self {
         Self::FromStringError(err)
+    }
+}
+
+impl From<ParseAmountError> for Error {
+    fn from(err: ParseAmountError) -> Self {
+        Self::CouldNotParseError(err)
     }
 }
