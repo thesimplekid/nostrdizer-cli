@@ -277,7 +277,7 @@ fn main() -> Result<()> {
                     println!("Finalized transaction, broadcasting ...");
 
                     // Broadcast signed psbt
-                    let txid = taker.broadcast_transaction(finalized_psbt).unwrap();
+                    let txid = taker.broadcast_transaction(finalized_psbt)?;
                     println!("TXID: {:?}", txid);
                 } else {
                     bail!("Transaction could not be verified")

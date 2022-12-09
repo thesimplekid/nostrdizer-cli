@@ -55,9 +55,9 @@ impl Maker {
         config: &mut Config,
         bitcoin_core_creds: BitcoinCoreCreditals,
     ) -> Result<Self, Error> {
-        let identity = Identity::from_str(priv_key).unwrap();
+        let identity = Identity::from_str(priv_key)?;
 
-        let nostr_client = NostrClient::new(relay_urls).unwrap();
+        let nostr_client = NostrClient::new(relay_urls)?;
 
         let rpc_client = RPCClient::new(
             &bitcoin_core_creds.rpc_url,
@@ -297,7 +297,7 @@ impl Maker {
         fill_offer: &FillOffer,
         unsigned_psbt: &str,
     ) -> Result<WalletProcessPsbtResult, Error> {
-        let decoded_tranaction = self.rpc_client.decode_psbt(unsigned_psbt)?;
+        let decoded_tranaction = self.rpc_client.decode_psbt(unsigned_psbt).unwrap();
 
         let tx = decoded_tranaction.tx;
 

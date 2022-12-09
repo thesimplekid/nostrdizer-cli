@@ -414,8 +414,9 @@ impl Taker {
         send_amount: Amount,
         unsigned_psbt: &str,
     ) -> Result<VerifyCJInfo, Error> {
-        let decoded_transaction = self.rpc_client.decode_psbt(unsigned_psbt)?;
+        let decoded_transaction = self.rpc_client.decode_psbt(unsigned_psbt).unwrap();
         let tx = decoded_transaction.tx;
+        println!("{:?}", tx);
         let input_value = utils::get_my_input_value(tx.vin, &self.rpc_client)?;
         let output_value = utils::get_my_output_value(tx.vout, &self.rpc_client)?;
         info!("Taker is spending {} sats", input_value.to_sat());

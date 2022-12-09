@@ -3,8 +3,9 @@ use crate::types::{NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages,
 use bitcoin::Amount;
 use bitcoincore_rpc::{Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::{
-    CreateRawTransactionInput, DecodePsbtResultVin, DecodePsbtResultVout, ListUnspentResultEntry,
-    WalletCreateFundedPsbtOptions, WalletCreateFundedPsbtResult, WalletProcessPsbtResult,
+    CreateRawTransactionInput, GetRawTransactionResultVin, GetRawTransactionResultVout,
+    ListUnspentResultEntry, WalletCreateFundedPsbtOptions, WalletCreateFundedPsbtResult,
+    WalletProcessPsbtResult,
 };
 
 use nostr_rust::{nostr_client::Client as NostrClient, Identity};
@@ -130,7 +131,7 @@ pub fn get_mining_fee(rpc_client: &RPCClient) -> Result<Amount, Error> {
 
 /// Get the input value of decoded psbt that is mine
 pub fn get_my_input_value(
-    vin: Vec<DecodePsbtResultVin>,
+    vin: Vec<GetRawTransactionResultVin>,
     rpc_client: &RPCClient,
 ) -> Result<Amount, Error> {
     let mut input_value: bitcoin::Amount = Amount::ZERO;
@@ -159,7 +160,7 @@ pub fn get_my_input_value(
 
 /// Get output value of decoded psbt that is is_mine
 pub fn get_my_output_value(
-    vout: Vec<DecodePsbtResultVout>,
+    vout: Vec<GetRawTransactionResultVout>,
     rpc_client: &RPCClient,
 ) -> Result<Amount, Error> {
     let mut output_value = Amount::ZERO;
