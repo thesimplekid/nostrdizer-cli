@@ -28,6 +28,7 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 
 ### Known Issues
 - [ ] Fee estimation doesn't work
+- [ ] Does not check for dust
 - [ ] No coin control to prevent mixing change and CJ
 
 ### Todo
