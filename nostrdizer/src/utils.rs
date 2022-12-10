@@ -1,7 +1,7 @@
 use crate::errors::Error;
 use crate::types::{
-    CJFee, MaxMineingFee, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Psbt,
-    VerifyCJInfo, Offer
+    CJFee, MaxMineingFee, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Offer,
+    Psbt, VerifyCJInfo,
 };
 use bitcoin::{Amount, Denomination, SignedAmount};
 use bitcoincore_rpc::{Client as RPCClient, RpcApi};
@@ -11,11 +11,18 @@ use bitcoincore_rpc_json::{
     WalletProcessPsbtResult,
 };
 
-use nostr_rust::{nostr_client::Client as NostrClient, Identity, req::ReqFilter};
+use nostr_rust::{
+    nips::nip4::{decrypt, encrypt},
+    nostr_client::Client as NostrClient,
+    req::ReqFilter,
+    Identity,
+};
 
 use log::debug;
+use secp256k1::SecretKey;
 
 use std::collections::HashMap;
+use std::str::FromStr;
 
 pub fn get_offers(nostr_client: &mut NostrClient) -> Result<Vec<(String, Offer)>, Error> {
     let filter = ReqFilter {
@@ -125,10 +132,13 @@ pub fn send_signed_psbt(
         }),
     };
 
-    nostr_client.send_private_message(
+    let encrypt_message = encrypt_message(&identity.secret_key, peer_pub_key, &event)?;
+
+    nostr_client.publish_ephemeral_event(
         identity,
-        peer_pub_key,
-        &serde_json::to_string(&event)?,
+        128,
+        &encrypt_message,
+        &[vec!["p".to_string(), peer_pub_key.to_string()]],
         0,
     )?;
 
@@ -267,4 +277,13 @@ pub fn verify_psbt(
             })
         }
     }
+}
+
+pub fn encrypt_message(
+    sk: &SecretKey,
+    pk: &str,
+    message: &NostrdizerMessage,
+) -> Result<String, Error> {
+    let x_pub_key = secp256k1::XOnlyPublicKey::from_str(pk)?;
+    Ok(encrypt(sk, &x_pub_key, &serde_json::to_string(&message)?)?)
 }

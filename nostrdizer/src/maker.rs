@@ -108,8 +108,8 @@ impl Maker {
             event: NostrdizerMessages::Offer(offer),
         })?;
 
-
-        self.nostr_client.publish_replaceable_event(&self.identity, 124, &content, &[], 0)?;
+        self.nostr_client
+            .publish_replaceable_event(&self.identity, 124, &content, &[], 0)?;
 
         Ok(offer)
     }
@@ -145,7 +145,7 @@ impl Maker {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![4]),
+            kinds: Some(vec![20125]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -165,7 +165,8 @@ impl Maker {
                 }
 
                 if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                    if event.kind == 4 && event.tags[0].contains(&self.identity.public_key_str) {
+                    if event.kind == 20125 && event.tags[0].contains(&self.identity.public_key_str)
+                    {
                         // TODO: This can prob be collapsed
                         let x = XOnlyPublicKey::from_str(&event.pub_key)?;
                         let decrypted_content =
@@ -233,10 +234,15 @@ impl Maker {
             event_type: NostrdizerMessageKind::MakerPsbt,
             event: NostrdizerMessages::MakerInputs(maker_input),
         };
-        self.nostr_client.send_private_message(
+
+        let encypted_content =
+            utils::encrypt_message(&self.identity.secret_key, peer_pub_key, &message)?;
+
+        self.nostr_client.publish_ephemeral_event(
             &self.identity,
-            peer_pub_key,
-            &serde_json::to_string(&message)?,
+            126,
+            &encypted_content,
+            &[vec!["p".to_string(), peer_pub_key.to_string()]],
             0,
         )?;
 
@@ -248,7 +254,7 @@ impl Maker {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![4]),
+            kinds: Some(vec![20127]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -267,7 +273,8 @@ impl Maker {
                     break;
                 }
                 if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                    if event.kind == 4 && event.tags[0].contains(&self.identity.public_key_str) {
+                    if event.kind == 20127 && event.tags[0].contains(&self.identity.public_key_str)
+                    {
                         // TODO: This can prob be collapsed
                         let x = XOnlyPublicKey::from_str(&event.pub_key)?;
                         let decrypted_content =
@@ -313,12 +320,13 @@ impl Maker {
         fill_offer: FillOffer,
         signed_psbt: &WalletProcessPsbtResult,
     ) -> Result<(), Error> {
-        utils::send_signed_psbt(
+        Ok(utils::send_signed_psbt(
             &self.identity,
             peer_pub_key,
             fill_offer.offer_id,
             signed_psbt.clone(),
             &mut self.nostr_client,
         )
+        .unwrap())
     }
 }

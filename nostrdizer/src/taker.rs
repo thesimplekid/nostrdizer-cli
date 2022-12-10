@@ -14,7 +14,10 @@ use bitcoincore_rpc_json::{
     WalletCreateFundedPsbtResult, WalletProcessPsbtResult,
 };
 use nostr_rust::{
-    events::Event, nips::nip4::decrypt, nostr_client::Client as NostrClient, req::ReqFilter,
+    events::Event,
+    nips::nip4::{decrypt, encrypt},
+    nostr_client::Client as NostrClient,
+    req::ReqFilter,
     Identity,
 };
 
@@ -96,7 +99,7 @@ impl Taker {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![4]),
+            kinds: Some(vec![20128]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -117,7 +120,8 @@ impl Taker {
                 }
 
                 if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                    if event.kind == 4 && event.tags[0].contains(&self.identity.public_key_str) {
+                    if event.kind == 20128 && event.tags[0].contains(&self.identity.public_key_str)
+                    {
                         // TODO: This can prob be collapsed
                         let x = XOnlyPublicKey::from_str(&event.pub_key)?;
                         let decrypted_content =
@@ -150,7 +154,7 @@ impl Taker {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![4]),
+            kinds: Some(vec![20126]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -171,7 +175,8 @@ impl Taker {
                 }
 
                 if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                    if event.kind == 4 && event.tags[0].contains(&self.identity.public_key_str) {
+                    if event.kind == 20126 && event.tags[0].contains(&self.identity.public_key_str)
+                    {
                         // TODO: This can prob be collapsed
                         let x = XOnlyPublicKey::from_str(&event.pub_key)?;
                         let decrypted_content =
@@ -314,10 +319,14 @@ impl Taker {
             event: NostrdizerMessages::FillOffer(fill_offer),
         };
 
-        self.nostr_client.send_private_message(
+        let encypted_content =
+            utils::encrypt_message(&self.identity.secret_key, peer_pub_key, message)?;
+
+        self.nostr_client.publish_ephemeral_event(
             &self.identity,
-            peer_pub_key,
-            &serde_json::to_string(&message)?,
+            125,
+            &encypted_content,
+            &[vec!["p".to_string(), peer_pub_key.to_string()]],
             0,
         )?;
 
@@ -358,10 +367,10 @@ impl Taker {
 
     /// Gets current offers
     pub fn get_offers(&mut self) -> Result<Vec<(String, Offer)>, Error> {
-    utils::get_offers(&mut self.nostr_client)
+        utils::get_offers(&mut self.nostr_client)
     }
 
-    /// Publish unsigned psbt to relay
+    /// Publish unsigned cj psbt to relay
     pub fn send_unsigned_psbt(
         &mut self,
         peer_pub_key: &str,
@@ -376,10 +385,14 @@ impl Taker {
             }),
         };
 
-        self.nostr_client.send_private_message(
+        let encypted_content =
+            utils::encrypt_message(&self.identity.secret_key, peer_pub_key, &message)?;
+
+        self.nostr_client.publish_ephemeral_event(
             &self.identity,
-            peer_pub_key,
-            &serde_json::to_string(&message)?,
+            127,
+            &encypted_content,
+            &[vec!["p".to_string(), peer_pub_key.to_string()]],
             0,
         )?;
 
