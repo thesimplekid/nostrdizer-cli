@@ -17,7 +17,8 @@ clap = { version = "4.0.22", features = ["derive"] }
 serde = { version = "1.0.147", features = ["derive"] }
 serde_json = "1.0.87"
 # nostr_rust = "0.13.0"
-nostr_rust = { path = "../nostr_rust"}
+# nostr_rust = { path = "../nostr_rust"}
+nostr_rust = { git = "https://github.com/thesimplekid/nostr_rust", branch="nostrdizer"}
 bitcoin = "0.29.2"
 anyhow = "1"
 rand = "0.8.5"

@@ -359,13 +359,7 @@ fn main() -> Result<()> {
 
             let mut maker = Maker::new(&priv_key, relay_urls, &mut config, bitcoin_core_creds)?;
 
-            let active_offer = maker.get_active_offer()?;
-
-            // Should maybe just always replace with a new offer
-            let offer = match active_offer {
-                Some(offer) => offer,
-                None => maker.publish_offer()?,
-            };
+            let offer = maker.publish_offer()?;
 
             println!("Running maker with {:?}", offer);
             println!("Wailing for takers...");
