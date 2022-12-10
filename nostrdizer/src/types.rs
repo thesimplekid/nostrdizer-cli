@@ -1,7 +1,7 @@
 use bitcoin::{Address, Amount, SignedAmount, Txid};
 use serde::{Deserialize, Serialize};
 
-/// Info for maker offer
+/// Maker offer
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub struct Offer {
     /// Offer Id
@@ -21,7 +21,7 @@ pub struct Offer {
     pub will_broadcast: bool,
 }
 
-/// Taker sends to fill maker offer
+/// Taker fill maker offer
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct FillOffer {
     pub offer_id: u32,
@@ -45,13 +45,19 @@ pub enum NostrdizerMessages {
     SignedCJ(Psbt),
 }
 
+/// Kinds if `NostrdizerMessages`
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum NostrdizerMessageKind {
+    /// Maker offer
     Offer,
+    /// Taker filling offer
     FillOffer,
+    /// Maker CJ inputs
     MakerInput,
     MakerPsbt,
+    /// Unsigned CJ psbt
     UnsignedCJ,
+    /// Signed CJ transactions
     SignedCJ,
 }
 
@@ -67,6 +73,7 @@ pub struct MakerInput {
     pub inputs: Vec<(Txid, u32)>,
     pub cj_out_address: Address,
     pub change_address: Address,
+    // Add a signed message feild to prive ownership of inputs
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -76,6 +83,7 @@ pub struct BitcoinCoreCreditals {
     pub rpc_password: String,
 }
 
+/// Final CJ transaction info
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VerifyCJInfo {
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
@@ -85,16 +93,24 @@ pub struct VerifyCJInfo {
     pub verifyed: bool,
 }
 
+/// CJ Fee required for transaction
+/// For a Taker, max fee will to pay
+/// For Maker, min fee required
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CJFee {
+    /// Absolute CJ fee
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
     pub abs_fee: Amount,
+    /// Relative CJ fee
     pub rel_fee: f64,
 }
 
+/// Maximum mining fee that can be paid
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MaxMineingFee {
+    /// Max absolute value of mining fee
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
     pub abs_fee: Amount,
+    /// Max mining fee as percent of send amount
     pub rel_fee: f64,
 }
