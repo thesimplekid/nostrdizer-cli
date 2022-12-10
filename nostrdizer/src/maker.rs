@@ -108,16 +108,8 @@ impl Maker {
             event: NostrdizerMessages::Offer(offer),
         })?;
 
-        let event = EventPrepare {
-            pub_key: self.identity.public_key_str.clone(),
-            created_at: get_timestamp(),
-            kind: 99,
-            tags: vec![],
-            content,
-        }
-        .to_event(&self.identity, 0);
 
-        self.nostr_client.publish_event(&event)?;
+        self.nostr_client.publish_replaceable_event(&self.identity, 124, &content, &[], 0)?;
 
         Ok(offer)
     }
@@ -127,7 +119,7 @@ impl Maker {
         let filter = ReqFilter {
             ids: None,
             authors: Some(vec![self.identity.public_key_str.clone()]),
-            kinds: Some(vec![93]),
+            kinds: Some(vec![10124]),
             e: None,
             p: None,
             since: None,

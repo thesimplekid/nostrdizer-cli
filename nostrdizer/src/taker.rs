@@ -358,28 +358,7 @@ impl Taker {
 
     /// Gets current offers
     pub fn get_offers(&mut self) -> Result<Vec<(String, Offer)>, Error> {
-        let filter = ReqFilter {
-            ids: None,
-            authors: None,
-            kinds: Some(vec![99]),
-            e: None,
-            p: None,
-            since: None,
-            until: None,
-            limit: None,
-        };
-
-        let mut offers = Vec::new();
-
-        let events = self.nostr_client.get_events_of(vec![filter])?;
-        for event in events {
-            let j_event: NostrdizerMessage = serde_json::from_str(&event.content)?;
-            if let NostrdizerMessages::Offer(offer) = j_event.event {
-                offers.push((event.pub_key, offer));
-            }
-        }
-
-        Ok(offers.clone())
+    utils::get_offers(&mut self.nostr_client)
     }
 
     /// Publish unsigned psbt to relay

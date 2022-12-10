@@ -29,17 +29,21 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 ### Known Issues
 - [ ] Mining fee estimation doesn't work
 - [ ] Does not check for dust
-- [ ] No coin control to prevent mixing change and CJ
-        - [ ] Maker does not verify that CJ outputs are sent to correct send vs change address
+- [ ] No coin control to prevent mixing change and CJ 
+    - [ ] Maker does not verify that CJ outputs are sent to correct send vs change address
 ### Todo
-- [ ] Use Replaceable events for offers (maybe even for DMs)
+- [x] Use Replaceable events for offers
+- [ ] Delete events when cj completed
+    - [ ] Use empermeral events for messages
+    - [ ] Delete maker offer
 - [ ] Maker should republish offer after completed Coinjoins
-        - [ ] New key with proof of work
+    - [ ] New key with proof of work
 - [ ] When maker sends inputs should sign message to prove ownership
 - [ ] Taker should handle makers not responding 
-        - [ ] At input collection
-        - [ ] At signing
+    - [ ] At input collection
+    - [ ] At signing
 - [ ] Maker republish offer if taker doesn't not respond 
+- [ ] Select maker to broadcast transaction (maybe maker doesnt even need to be one of the ones in CJ)
 - [ ] Fidelity Bond (it'll be a bit)
 - [ ] Cleanup and add tests
 - [ ] Add print outs 

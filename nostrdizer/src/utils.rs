@@ -1,7 +1,7 @@
 use crate::errors::Error;
 use crate::types::{
     CJFee, MaxMineingFee, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Psbt,
-    VerifyCJInfo,
+    VerifyCJInfo, Offer
 };
 use bitcoin::{Amount, Denomination, SignedAmount};
 use bitcoincore_rpc::{Client as RPCClient, RpcApi};
@@ -11,11 +11,36 @@ use bitcoincore_rpc_json::{
     WalletProcessPsbtResult,
 };
 
-use nostr_rust::{nostr_client::Client as NostrClient, Identity};
+use nostr_rust::{nostr_client::Client as NostrClient, Identity, req::ReqFilter};
 
 use log::debug;
 
 use std::collections::HashMap;
+
+pub fn get_offers(nostr_client: &mut NostrClient) -> Result<Vec<(String, Offer)>, Error> {
+    let filter = ReqFilter {
+        ids: None,
+        authors: None,
+        kinds: Some(vec![10124]),
+        e: None,
+        p: None,
+        since: None,
+        until: None,
+        limit: None,
+    };
+
+    let mut offers = Vec::new();
+
+    let events = nostr_client.get_events_of(vec![filter])?;
+    for event in events {
+        let j_event: NostrdizerMessage = serde_json::from_str(&event.content)?;
+        if let NostrdizerMessages::Offer(offer) = j_event.event {
+            offers.push((event.pub_key, offer));
+        }
+    }
+
+    Ok(offers.clone())
+}
 
 pub fn get_input_psbt(
     amount: Amount,
