@@ -355,7 +355,6 @@ fn main() -> Result<()> {
                 maxsize,
                 will_broadcast,
             };
-            // TODO: check if offer is published if not prompt to publish
 
             let mut maker = Maker::new(&priv_key, relay_urls, &mut config, bitcoin_core_creds)?;
 
@@ -367,6 +366,8 @@ fn main() -> Result<()> {
             let (peer_pubkey, fill_offer) = maker.get_fill_offer()?;
 
             println!("Received fill Offer: {:?}", fill_offer);
+
+            maker.delete_active_offer()?;
 
             let maker_input = maker.get_inputs(&fill_offer)?;
             maker.send_maker_input(&peer_pubkey, maker_input)?;

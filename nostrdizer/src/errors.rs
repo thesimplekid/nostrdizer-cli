@@ -1,5 +1,5 @@
 use bitcoin::util::amount::ParseAmountError;
-use nostr_rust::nips::nip16::NIP16Error;
+use nostr_rust::nips::{nip16::NIP16Error, nip9::NIP9Error};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -21,6 +21,9 @@ pub enum Error {
 
     #[error("Nostr rust nip 16 error")]
     NIP16(NIP16Error),
+
+    #[error("Nostr rust nip 9 error")]
+    NIP9(NIP9Error),
 
     #[error("Bitcoin Sep256k1 error")]
     BitcoinSecpError(bitcoin::secp256k1::Error),
@@ -95,5 +98,11 @@ impl From<ParseAmountError> for Error {
 impl From<NIP16Error> for Error {
     fn from(err: NIP16Error) -> Self {
         Self::NIP16(err)
+    }
+}
+
+impl From<NIP9Error> for Error {
+    fn from(err: NIP9Error) -> Self {
+        Self::NIP9(err)
     }
 }

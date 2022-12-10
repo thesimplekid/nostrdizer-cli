@@ -140,6 +140,30 @@ impl Maker {
         Ok(None)
     }
 
+    /// Maker delete active offer
+    pub fn delete_active_offer(&mut self) -> Result<(), Error> {
+        let filter = ReqFilter {
+            ids: None,
+            authors: Some(vec![self.identity.public_key_str.clone()]),
+            kinds: Some(vec![10124]),
+            e: None,
+            p: None,
+            since: None,
+            until: None,
+            limit: None,
+        };
+
+        if let Ok(events) = self.nostr_client.get_events_of(vec![filter]) {
+            if !events.is_empty() {
+                let offer_event = events.last().unwrap();
+                let event_id = &offer_event.id;
+                self.nostr_client
+                    .delete_event(&self.identity, event_id, 0)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Maker waits for fill offer
     pub fn get_fill_offer(&mut self) -> Result<(String, FillOffer), Error> {
         let filter = ReqFilter {
