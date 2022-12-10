@@ -203,22 +203,19 @@ pub fn verify_psbt(
     match role {
         Role::Maker(cj_fee, min_size, max_size) => {
             let maker_fee = output_value.to_signed()? - input_value.to_signed()?;
-            debug!("Maker fee: {maker_fee}");
             let abs_fee_check = maker_fee.ge(&cj_fee.abs_fee.to_signed()?);
-            debug!("abs value check {abs_fee_check}");
             let fee_as_percent = maker_fee.to_float_in(Denomination::Satoshi)
                 / send_amount.to_float_in(Denomination::Satoshi);
 
-            debug!("Fee as percent {:?}", fee_as_percent);
+            // Verify maker gets > set fee
             let rel_fee_check = fee_as_percent.ge(&cj_fee.rel_fee);
 
-            debug!("rel fee check {rel_fee_check}");
             // Max send amount check
             let max_amount_check = match max_size {
                 Some(max_size) => send_amount <= max_size,
                 None => true,
             };
-            debug!("Max amount {max_amount_check}");
+
             Ok(VerifyCJInfo {
                 mining_fee,
                 maker_fee,
