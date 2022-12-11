@@ -13,7 +13,7 @@ use nostr_rust::{
 
 use bitcoin::Amount;
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
-use bitcoincore_rpc_json::{WalletCreateFundedPsbtResult, WalletProcessPsbtResult};
+use bitcoincore_rpc_json::WalletProcessPsbtResult;
 
 use log::debug;
 
@@ -206,14 +206,6 @@ impl Maker {
         }
     }
 
-    pub fn get_input_psbt(
-        &mut self,
-        send_amount: Amount,
-        fee_rate: Option<Amount>,
-    ) -> Result<WalletCreateFundedPsbtResult, Error> {
-        utils::get_input_psbt(send_amount, fee_rate, &self.rpc_client)
-    }
-
     /// Gets maker input for CJ
     pub fn get_inputs(&mut self, fill_offer: &FillOffer) -> Result<MakerInput, Error> {
         let unspent = self.rpc_client.list_unspent(None, None, None, None, None)?;
@@ -271,7 +263,7 @@ impl Maker {
         Ok(())
     }
 
-    /// Maker sign psbt
+    /// Maker waits for unsigned CJ transaction
     pub fn get_unsigned_cj_psbt(&mut self) -> Result<String, Error> {
         let filter = ReqFilter {
             ids: None,
@@ -342,6 +334,7 @@ impl Maker {
         utils::sign_psbt(unsigned_psbt, &self.rpc_client)
     }
 
+    /// Send signed psbt back to taker
     pub fn send_signed_psbt(
         &mut self,
         peer_pub_key: &str,

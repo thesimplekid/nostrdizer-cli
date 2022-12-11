@@ -11,7 +11,7 @@ use bitcoin::{Amount, Denomination};
 
 use bitcoincore_rpc_json::{
     CreateRawTransactionInput, FinalizePsbtResult, ListUnspentResultEntry,
-    WalletCreateFundedPsbtResult, WalletProcessPsbtResult,
+    WalletProcessPsbtResult,
 };
 use nostr_rust::{events::Event, nostr_client::Client as NostrClient, req::ReqFilter, Identity};
 
@@ -76,14 +76,6 @@ impl Taker {
     /// Get unspent UTXOs
     pub fn get_unspent(&mut self) -> Result<Vec<ListUnspentResultEntry>, Error> {
         utils::get_unspent(&self.rpc_client)
-    }
-
-    pub fn get_input_psbt(
-        &mut self,
-        send_amount: Amount,
-        fee_rate: Option<Amount>,
-    ) -> Result<WalletCreateFundedPsbtResult, Error> {
-        utils::get_input_psbt(send_amount, fee_rate, &self.rpc_client)
     }
 
     /// Gets signed peer psbts
@@ -412,10 +404,6 @@ impl Taker {
         )?;
 
         Ok(())
-    }
-
-    pub fn join_psbt(&mut self, psbts: Vec<String>) -> Result<String, Error> {
-        Ok(self.rpc_client.join_psbt(&psbts)?)
     }
 
     pub fn finalize_psbt(&mut self, psbt: &str) -> Result<FinalizePsbtResult, Error> {
