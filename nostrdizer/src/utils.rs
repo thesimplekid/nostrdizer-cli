@@ -12,14 +12,14 @@ use bitcoincore_rpc_json::{
 };
 
 use nostr_rust::{
-    nips::nip4::encrypt,
+    nips::nip4::{decrypt, encrypt},
     nostr_client::Client as NostrClient,
     req::ReqFilter,
     Identity,
 };
 
 use log::debug;
-use secp256k1::SecretKey;
+use secp256k1::{SecretKey, XOnlyPublicKey};
 
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -284,6 +284,15 @@ pub fn encrypt_message(
     pk: &str,
     message: &NostrdizerMessage,
 ) -> Result<String, Error> {
-    let x_pub_key = secp256k1::XOnlyPublicKey::from_str(pk)?;
+    let x_pub_key = XOnlyPublicKey::from_str(pk)?;
     Ok(encrypt(sk, &x_pub_key, &serde_json::to_string(&message)?)?)
+}
+
+pub fn decrypt_message(
+    sk: &SecretKey,
+    pk: &str,
+    message: &str,
+) -> Result<NostrdizerMessage, Error> {
+    let x = XOnlyPublicKey::from_str(pk)?;
+    Ok(serde_json::from_str(&decrypt(sk, &x, message)?)?)
 }

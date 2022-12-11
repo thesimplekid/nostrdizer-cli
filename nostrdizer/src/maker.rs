@@ -4,18 +4,13 @@ use crate::{
         BitcoinCoreCreditals, CJFee, FillOffer, MakerInput, NostrdizerMessage,
         NostrdizerMessageKind, NostrdizerMessages, Offer, VerifyCJInfo,
     },
-    utils,
+    utils::{self, decrypt_message},
 };
 use nostr_rust::{
-    events::Event,
-    nips::nip4::decrypt,
-    nostr_client::Client as NostrClient,
-    req::ReqFilter,
-    utils::get_timestamp,
+    events::Event, nostr_client::Client as NostrClient, req::ReqFilter, utils::get_timestamp,
     Identity,
 };
 
-use bitcoin::XOnlyPublicKey;
 use bitcoin::Amount;
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::{WalletCreateFundedPsbtResult, WalletProcessPsbtResult};
@@ -182,7 +177,6 @@ impl Maker {
         loop {
             let data = self.nostr_client.next_data()?;
             for (_, message) in data {
-                debug!("{:?}", message);
                 if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
                     if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
                         break;
@@ -192,13 +186,13 @@ impl Maker {
                         if event.kind == 20125
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
-                            // TODO: This can prob be collapsed
-                            let x = XOnlyPublicKey::from_str(&event.pub_key)?;
-                            let decrypted_content =
-                                decrypt(&self.identity.secret_key, &x, &event.content)?;
-                            let j_event: NostrdizerMessage =
-                                serde_json::from_str(&decrypted_content)?;
-                            if let NostrdizerMessages::FillOffer(fill_offer) = j_event.event {
+                            if let NostrdizerMessages::FillOffer(fill_offer) = decrypt_message(
+                                &self.identity.secret_key,
+                                &event.pub_key,
+                                &event.content,
+                            )?
+                            .event
+                            {
                                 return Ok((event.pub_key, fill_offer));
                             }
                         }
@@ -290,28 +284,28 @@ impl Maker {
             limit: None,
         };
 
-        let subcription_id = self.nostr_client.subscribe(vec![filter])?;
+        let subscription_id = self.nostr_client.subscribe(vec![filter])?;
 
         let started_waiting = get_timestamp();
         loop {
             let data = self.nostr_client.next_data()?;
             for (_, message) in data {
                 if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
-                    if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
+                    if event[0] == "EOSE" && event[1].as_str() == Some(&subscription_id) {
                         break;
                     }
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
                         if event.kind == 20127
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
-                            // TODO: This can prob be collapsed
-                            let x = XOnlyPublicKey::from_str(&event.pub_key)?;
-                            let decrypted_content =
-                                decrypt(&self.identity.secret_key, &x, &event.content)?;
-                            let j_event: NostrdizerMessage =
-                                serde_json::from_str(&decrypted_content)?;
-                            if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) = j_event.event {
-                                // Close subscription to relay
+                            if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) = decrypt_message(
+                                &self.identity.secret_key,
+                                &event.pub_key,
+                                &event.content,
+                            )?
+                            .event
+                            {
+                                self.nostr_client.unsubscribe(&subscription_id)?;
                                 return Ok(unsigned_psbt.psbt);
                             }
                         }

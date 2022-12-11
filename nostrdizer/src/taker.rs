@@ -4,22 +4,16 @@ use crate::{
         BitcoinCoreCreditals, CJFee, FillOffer, MakerInput, MaxMineingFee, NostrdizerMessage,
         NostrdizerMessageKind, NostrdizerMessages, Offer, Psbt, VerifyCJInfo,
     },
-    utils,
+    utils::{self, decrypt_message},
 };
 
-use bitcoin::{Amount, Denomination, XOnlyPublicKey};
+use bitcoin::{Amount, Denomination};
 
 use bitcoincore_rpc_json::{
     CreateRawTransactionInput, FinalizePsbtResult, ListUnspentResultEntry,
     WalletCreateFundedPsbtResult, WalletProcessPsbtResult,
 };
-use nostr_rust::{
-    events::Event,
-    nips::nip4::decrypt,
-    nostr_client::Client as NostrClient,
-    req::ReqFilter,
-    Identity,
-};
+use nostr_rust::{events::Event, nostr_client::Client as NostrClient, req::ReqFilter, Identity};
 
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use log::debug;
@@ -29,7 +23,7 @@ use std::str::FromStr;
 
 struct Config {
     cj_fee: CJFee,
-    mining_fee: MaxMineingFee, 
+    mining_fee: MaxMineingFee,
 }
 
 pub struct Taker {
@@ -120,13 +114,13 @@ impl Taker {
                         if event.kind == 20128
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
-                            // TODO: This can prob be collapsed
-                            let x = XOnlyPublicKey::from_str(&event.pub_key)?;
-                            let decrypted_content =
-                                decrypt(&self.identity.secret_key, &x, &event.content)?;
-                            let j_event: NostrdizerMessage =
-                                serde_json::from_str(&decrypted_content)?;
-                            if let NostrdizerMessages::SignedCJ(signed_psbt) = j_event.event {
+                            if let NostrdizerMessages::SignedCJ(signed_psbt) = decrypt_message(
+                                &self.identity.secret_key,
+                                &event.pub_key,
+                                &event.content,
+                            )?
+                            .event
+                            {
                                 peer_signed_psbts.insert(event.pub_key.to_string(), signed_psbt);
 
                                 if peer_signed_psbts.len() >= peer_count {
@@ -178,13 +172,13 @@ impl Taker {
                         if event.kind == 20126
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
-                            // TODO: This can prob be collapsed
-                            let x = XOnlyPublicKey::from_str(&event.pub_key)?;
-                            let decrypted_content =
-                                decrypt(&self.identity.secret_key, &x, &event.content)?;
-                            let j_event: NostrdizerMessage =
-                                serde_json::from_str(&decrypted_content)?;
-                            if let NostrdizerMessages::MakerInputs(maker_input) = j_event.event {
+                            if let NostrdizerMessages::MakerInputs(maker_input) = decrypt_message(
+                                &self.identity.secret_key,
+                                &event.pub_key,
+                                &event.content,
+                            )?
+                            .event
+                            {
                                 peer_inputs.push((event.pub_key.clone(), maker_input));
                             }
                         }
