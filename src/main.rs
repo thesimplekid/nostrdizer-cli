@@ -9,7 +9,6 @@ use nostrdizer::{
     maker::{Config as MakerConfig, Maker},
     taker,
     types::{BitcoinCoreCreditals, FillOffer},
-    utils,
 };
 
 use nostr_rust::keys::get_random_secret_key;
@@ -374,7 +373,7 @@ fn main() -> Result<()> {
                 let offer = maker.publish_offer()?;
 
                 println!("Running maker with {:?}", offer);
-                println!("Wailing for takers...");
+                println!("Waiting for takers...");
 
                 let (peer_pubkey, fill_offer) = maker.get_fill_offer()?;
 

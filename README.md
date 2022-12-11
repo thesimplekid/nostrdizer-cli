@@ -38,7 +38,7 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 - [x] Delete events when cj completed
     - [x] Use ephemeral events for messages
     - [x] Delete maker offer
-- [x}  Maker should republish offer after completed Coinjoins
+- [x] Maker should republish offer after completed Coinjoins
     - [ ] New key with proof of work
 - [ ] When maker sends inputs should sign message to prove ownership
 - [ ] Taker should handle makers not responding 

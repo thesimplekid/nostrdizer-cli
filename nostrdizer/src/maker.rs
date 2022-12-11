@@ -7,7 +7,7 @@ use crate::{
     utils,
 };
 use nostr_rust::{
-    events::{Event, EventPrepare},
+    events::Event,
     nips::nip4::decrypt,
     nostr_client::Client as NostrClient,
     req::ReqFilter,
@@ -16,11 +16,11 @@ use nostr_rust::{
 };
 
 use bitcoin::XOnlyPublicKey;
-use bitcoin::{Amount, Denomination};
+use bitcoin::Amount;
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::{WalletCreateFundedPsbtResult, WalletProcessPsbtResult};
 
-use log::{debug, info};
+use log::debug;
 
 use std::str::FromStr;
 
@@ -182,25 +182,25 @@ impl Maker {
         loop {
             let data = self.nostr_client.next_data()?;
             for (_, message) in data {
-                let event: Value = serde_json::from_str(&message.to_string())?;
+                debug!("{:?}", message);
+                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
+                    if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
+                        break;
+                    }
 
-                if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
-                    break;
-                }
-
-                if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                    if event.kind == 20125 && event.tags[0].contains(&self.identity.public_key_str)
-                    {
-                        // TODO: This can prob be collapsed
-                        let x = XOnlyPublicKey::from_str(&event.pub_key)?;
-                        let decrypted_content =
-                            decrypt(&self.identity.secret_key, &x, &event.content)?;
-                        debug!("{:?}", decrypted_content);
-                        let j_event: NostrdizerMessage =
-                            serde_json::from_str(&decrypted_content).unwrap();
-                        if let NostrdizerMessages::FillOffer(fill_offer) = j_event.event {
-                            // Close subscription to relay
-                            return Ok((event.pub_key, fill_offer));
+                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                        if event.kind == 20125
+                            && event.tags[0].contains(&self.identity.public_key_str)
+                        {
+                            // TODO: This can prob be collapsed
+                            let x = XOnlyPublicKey::from_str(&event.pub_key)?;
+                            let decrypted_content =
+                                decrypt(&self.identity.secret_key, &x, &event.content)?;
+                            let j_event: NostrdizerMessage =
+                                serde_json::from_str(&decrypted_content)?;
+                            if let NostrdizerMessages::FillOffer(fill_offer) = j_event.event {
+                                return Ok((event.pub_key, fill_offer));
+                            }
                         }
                     }
                 }
@@ -296,22 +296,24 @@ impl Maker {
         loop {
             let data = self.nostr_client.next_data()?;
             for (_, message) in data {
-                let event: Value = serde_json::from_str(&message.to_string())?;
-
-                if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
-                    break;
-                }
-                if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                    if event.kind == 20127 && event.tags[0].contains(&self.identity.public_key_str)
-                    {
-                        // TODO: This can prob be collapsed
-                        let x = XOnlyPublicKey::from_str(&event.pub_key)?;
-                        let decrypted_content =
-                            decrypt(&self.identity.secret_key, &x, &event.content)?;
-                        let j_event: NostrdizerMessage = serde_json::from_str(&decrypted_content)?;
-                        if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) = j_event.event {
-                            // Close subscription to relay
-                            return Ok(unsigned_psbt.psbt);
+                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
+                    if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
+                        break;
+                    }
+                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                        if event.kind == 20127
+                            && event.tags[0].contains(&self.identity.public_key_str)
+                        {
+                            // TODO: This can prob be collapsed
+                            let x = XOnlyPublicKey::from_str(&event.pub_key)?;
+                            let decrypted_content =
+                                decrypt(&self.identity.secret_key, &x, &event.content)?;
+                            let j_event: NostrdizerMessage =
+                                serde_json::from_str(&decrypted_content)?;
+                            if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) = j_event.event {
+                                // Close subscription to relay
+                                return Ok(unsigned_psbt.psbt);
+                            }
                         }
                     }
                 }
@@ -352,13 +354,13 @@ impl Maker {
         fill_offer: FillOffer,
         signed_psbt: &WalletProcessPsbtResult,
     ) -> Result<(), Error> {
-        Ok(utils::send_signed_psbt(
+        utils::send_signed_psbt(
             &self.identity,
             peer_pub_key,
             fill_offer.offer_id,
             signed_psbt.clone(),
             &mut self.nostr_client,
-        )
-        .unwrap())
+        )?;
+        Ok(())
     }
 }

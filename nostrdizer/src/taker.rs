@@ -15,7 +15,7 @@ use bitcoincore_rpc_json::{
 };
 use nostr_rust::{
     events::Event,
-    nips::nip4::{decrypt, encrypt},
+    nips::nip4::decrypt,
     nostr_client::Client as NostrClient,
     req::ReqFilter,
     Identity,
@@ -23,15 +23,13 @@ use nostr_rust::{
 
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use log::debug;
-use log::info;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::str::FromStr;
 
 struct Config {
     cj_fee: CJFee,
-    mining_fee: MaxMineingFee, // max_rel_fee: f64,
-                               // max_abs_fee: Amount,
+    mining_fee: MaxMineingFee, 
 }
 
 pub struct Taker {
@@ -113,31 +111,34 @@ impl Taker {
         loop {
             let data = self.nostr_client.next_data()?;
             for (_, message) in data {
-                let event: Value = serde_json::from_str(&message.to_string())?;
+                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
+                    if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
+                        break;
+                    }
 
-                if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
-                    break;
-                }
+                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                        if event.kind == 20128
+                            && event.tags[0].contains(&self.identity.public_key_str)
+                        {
+                            // TODO: This can prob be collapsed
+                            let x = XOnlyPublicKey::from_str(&event.pub_key)?;
+                            let decrypted_content =
+                                decrypt(&self.identity.secret_key, &x, &event.content)?;
+                            let j_event: NostrdizerMessage =
+                                serde_json::from_str(&decrypted_content)?;
+                            if let NostrdizerMessages::SignedCJ(signed_psbt) = j_event.event {
+                                peer_signed_psbts.insert(event.pub_key.to_string(), signed_psbt);
 
-                if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                    if event.kind == 20128 && event.tags[0].contains(&self.identity.public_key_str)
-                    {
-                        // TODO: This can prob be collapsed
-                        let x = XOnlyPublicKey::from_str(&event.pub_key)?;
-                        let decrypted_content =
-                            decrypt(&self.identity.secret_key, &x, &event.content)?;
-                        let j_event: NostrdizerMessage = serde_json::from_str(&decrypted_content)?;
-                        if let NostrdizerMessages::SignedCJ(signed_psbt) = j_event.event {
-                            // Close subscription to relay
-                            peer_signed_psbts.insert(event.pub_key.to_string(), signed_psbt);
+                                if peer_signed_psbts.len() >= peer_count {
+                                    let psbts: Vec<String> = peer_signed_psbts
+                                        .values()
+                                        .map(|p| p.psbt.clone())
+                                        .collect();
 
-                            if peer_signed_psbts.len() >= peer_count {
-                                let psbts: Vec<String> =
-                                    peer_signed_psbts.values().map(|p| p.psbt.clone()).collect();
+                                    let combined_psbt = self.rpc_client.combine_psbt(&psbts)?;
 
-                                let combined_psbt = self.rpc_client.combine_psbt(&psbts)?;
-
-                                return Ok(combined_psbt);
+                                    return Ok(combined_psbt);
+                                }
                             }
                         }
                     }
@@ -168,22 +169,24 @@ impl Taker {
         loop {
             let data = &self.nostr_client.next_data()?;
             for (_, message) in data {
-                let event: Value = serde_json::from_str(&message.to_string())?;
+                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
+                    if event[0] == "EOSE" && event[1].as_str() == Some(subcription_id) {
+                        break;
+                    }
 
-                if event[0] == "EOSE" && event[1].as_str() == Some(subcription_id) {
-                    break;
-                }
-
-                if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                    if event.kind == 20126 && event.tags[0].contains(&self.identity.public_key_str)
-                    {
-                        // TODO: This can prob be collapsed
-                        let x = XOnlyPublicKey::from_str(&event.pub_key)?;
-                        let decrypted_content =
-                            decrypt(&self.identity.secret_key, &x, &event.content)?;
-                        let j_event: NostrdizerMessage = serde_json::from_str(&decrypted_content)?;
-                        if let NostrdizerMessages::MakerInputs(maker_input) = j_event.event {
-                            peer_inputs.push((event.pub_key.clone(), maker_input));
+                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                        if event.kind == 20126
+                            && event.tags[0].contains(&self.identity.public_key_str)
+                        {
+                            // TODO: This can prob be collapsed
+                            let x = XOnlyPublicKey::from_str(&event.pub_key)?;
+                            let decrypted_content =
+                                decrypt(&self.identity.secret_key, &x, &event.content)?;
+                            let j_event: NostrdizerMessage =
+                                serde_json::from_str(&decrypted_content)?;
+                            if let NostrdizerMessages::MakerInputs(maker_input) = j_event.event {
+                                peer_inputs.push((event.pub_key.clone(), maker_input));
+                            }
                         }
                     }
                 }

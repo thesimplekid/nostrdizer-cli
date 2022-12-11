@@ -12,7 +12,7 @@ use bitcoincore_rpc_json::{
 };
 
 use nostr_rust::{
-    nips::nip4::{decrypt, encrypt},
+    nips::nip4::encrypt,
     nostr_client::Client as NostrClient,
     req::ReqFilter,
     Identity,
