@@ -3,11 +3,13 @@ use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
 use std::{collections::HashMap, env, panic};
 
-use log::{debug, LevelFilter};
+use log::{debug, error, warn, LevelFilter};
 use nostrdizer::{
+    errors::Error as NostrdizerError,
     maker::{Config as MakerConfig, Maker},
     taker,
     types::{BitcoinCoreCreditals, FillOffer},
+    utils,
 };
 
 use nostr_rust::keys::get_random_secret_key;
@@ -215,6 +217,12 @@ fn main() -> Result<()> {
                 send_amount.to_sat(),
                 number_of_makers
             );
+
+            // Check to make sure taker has sufficient balance
+            if taker.get_eligible_balance()? < send_amount {
+                bail!("Insufficient funds")
+            }
+
             // REVIEW: if there are no matching offers it just ends
             let matching_peers = taker.get_matching_offers(send_amount)?;
             debug!("Matching peers {:?}", matching_peers);
@@ -355,32 +363,44 @@ fn main() -> Result<()> {
                 maxsize,
                 will_broadcast,
             };
+            loop {
+                let mut maker = Maker::new(
+                    &priv_key,
+                    relay_urls.clone(),
+                    &mut config,
+                    bitcoin_core_creds.clone(),
+                )?;
 
-            let mut maker = Maker::new(&priv_key, relay_urls, &mut config, bitcoin_core_creds)?;
+                let offer = maker.publish_offer()?;
 
-            let offer = maker.publish_offer()?;
+                println!("Running maker with {:?}", offer);
+                println!("Wailing for takers...");
 
-            println!("Running maker with {:?}", offer);
-            println!("Wailing for takers...");
+                let (peer_pubkey, fill_offer) = maker.get_fill_offer()?;
 
-            let (peer_pubkey, fill_offer) = maker.get_fill_offer()?;
+                println!("Received fill Offer: {:?}", fill_offer);
 
-            println!("Received fill Offer: {:?}", fill_offer);
+                maker.delete_active_offer()?;
 
-            maker.delete_active_offer()?;
+                let maker_input = maker.get_inputs(&fill_offer)?;
+                maker.send_maker_input(&peer_pubkey, maker_input)?;
+                debug!("Sent Maker Input");
 
-            let maker_input = maker.get_inputs(&fill_offer)?;
-            maker.send_maker_input(&peer_pubkey, maker_input)?;
-            debug!("Sent Maker Input");
-
-            let unsigned_psbt = maker.get_unsigned_cj_psbt()?;
-
-            if let Ok(psbt_info) = maker.verify_psbt(&fill_offer, &unsigned_psbt) {
-                if psbt_info.verifyed {
-                    let signed_psbt = maker.sign_psbt(&unsigned_psbt)?;
-                    maker.send_signed_psbt(&peer_pubkey, fill_offer, &signed_psbt)?;
-                } else {
-                    bail!("Transaction could not be verified");
+                match maker.get_unsigned_cj_psbt() {
+                    Ok(unsigned_psbt) => {
+                        if let Ok(psbt_info) = maker.verify_psbt(&fill_offer, &unsigned_psbt) {
+                            if psbt_info.verifyed {
+                                let signed_psbt = maker.sign_psbt(&unsigned_psbt)?;
+                                maker.send_signed_psbt(&peer_pubkey, fill_offer, &signed_psbt)?;
+                            } else {
+                                warn!("Transaction could not be verified");
+                            }
+                        }
+                    }
+                    Err(NostrdizerError::TakerFailedToSendTransaction) => {
+                        warn!("Taker did not send transaction");
+                    }
+                    Err(err) => error!("{:?}", err),
                 }
             }
         }

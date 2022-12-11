@@ -51,6 +51,12 @@ pub enum Error {
 
     #[error("Could not parse amount")]
     CouldNotParseError(ParseAmountError),
+
+    #[error("Insufficient funds")]
+    InsufficientFunds,
+
+    #[error("Taker did not respond with transaction")]
+    TakerFailedToSendTransaction,
 }
 
 impl From<bitcoincore_rpc::Error> for Error {

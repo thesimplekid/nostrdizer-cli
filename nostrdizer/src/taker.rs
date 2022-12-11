@@ -231,6 +231,8 @@ impl Taker {
         let mut inputs = vec![];
         let mut outputs = HashMap::new();
         let mut total_maker_fees = Amount::ZERO;
+        // Iterates over maker inputs and adds their inputs to transaction
+        // (maker_pub_key, maker input)
         for (maker, maker_input) in maker_inputs {
             for input in maker_input.inputs.clone() {
                 let raw_input = CreateRawTransactionInput {
@@ -241,6 +243,7 @@ impl Taker {
                 inputs.push(raw_input);
             }
 
+            // Sums up total value of a makers input UTXOs
             let maker_input_val = maker_input.inputs.iter().fold(Amount::ZERO, |val, input| {
                 val + self
                     .rpc_client
@@ -251,15 +254,16 @@ impl Taker {
             });
             outputs.insert(maker_input.cj_out_address.to_string(), send_amount);
 
+            // Gets a makers offer from Hashmap in order to calculate their required fee
             let maker_offer = maker_offers.get(&maker).unwrap();
             let maker_fee = Amount::from_sat(
                 (send_amount.to_float_in(Denomination::Satoshi) * maker_offer.rel_fee).ceil()
                     as u64,
             ) + maker_offer.abs_fee;
-            total_maker_fees += maker_fee;
             let change_value = maker_input_val - send_amount + maker_fee;
-
             outputs.insert(maker_input.change_address.to_string(), change_value);
+
+            total_maker_fees += maker_fee;
         }
 
         // Taker inputs
@@ -273,6 +277,10 @@ impl Taker {
         outputs.insert(taker_cj_out.to_string(), send_amount);
 
         // Taker change output
+        // REVIEW:
+        // Right now taker change is added here with a dummy amount
+        // Then replaced later, so that the fee can be calculated
+        // Be better to not have to add then replace
         let taker_change_out = self.rpc_client.get_raw_change_address(None)?;
         outputs.insert(taker_change_out.to_string(), Amount::from_sat(1000));
         let transaction = self
@@ -294,11 +302,21 @@ impl Taker {
             }
             Err(_) => Amount::from_sat(500),
         };
-        debug!("Mining fee: {:?} sats", mining_fee.to_sat());
-        let taker_change = taker_inputs.0 - send_amount - total_maker_fees - mining_fee;
-        outputs.insert(taker_change_out.to_string(), taker_change);
 
-        debug!("inputs {:?}", inputs);
+        // Calculates taker change
+        debug!("Mining fee: {:?} sats", mining_fee.to_sat());
+        let taker_change = taker_inputs.0.to_signed()?
+            - send_amount.to_signed()?
+            - total_maker_fees.to_signed()?
+            - mining_fee.to_signed()?;
+
+        if taker_change < Amount::ZERO.to_signed()? {
+            return Err(Error::InsufficientFunds);
+        }
+        // Replaces change output that has been added above
+        outputs.insert(taker_change_out.to_string(), taker_change.to_unsigned()?);
+
+        debug!("Inputs {:?}", inputs);
         debug!("Outputs: {:?}", outputs);
         let psbt = self
             .rpc_client

@@ -38,13 +38,13 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 - [x] Delete events when cj completed
     - [x] Use ephemeral events for messages
     - [x] Delete maker offer
-- [ ] Maker should republish offer after completed Coinjoins
+- [x}  Maker should republish offer after completed Coinjoins
     - [ ] New key with proof of work
 - [ ] When maker sends inputs should sign message to prove ownership
 - [ ] Taker should handle makers not responding 
     - [ ] At input collection
     - [ ] At signing
-- [ ] Maker republish offer if taker doesn't not respond 
+- [x] Maker republish offer if taker doesn't not respond 
 - [ ] Select maker to broadcast transaction (maybe maker doesnt even need to be one of the ones in CJ)
 - [ ] Fidelity Bond (it'll be a bit)
 - [ ] Cleanup and add tests

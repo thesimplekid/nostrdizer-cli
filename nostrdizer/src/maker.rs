@@ -178,7 +178,7 @@ impl Maker {
         };
 
         let subcription_id = self.nostr_client.subscribe(vec![filter])?;
-
+        let mut time = get_timestamp();
         loop {
             let data = self.nostr_client.next_data()?;
             for (_, message) in data {
@@ -204,6 +204,10 @@ impl Maker {
                         }
                     }
                 }
+            }
+            if get_timestamp().gt(&(time + 600)) {
+                self.publish_offer()?;
+                time = get_timestamp();
             }
         }
     }
@@ -288,6 +292,7 @@ impl Maker {
 
         let subcription_id = self.nostr_client.subscribe(vec![filter])?;
 
+        let started_waiting = get_timestamp();
         loop {
             let data = self.nostr_client.next_data()?;
             for (_, message) in data {
@@ -310,6 +315,9 @@ impl Maker {
                         }
                     }
                 }
+            }
+            if started_waiting.gt(&(started_waiting + 300)) {
+                return Err(Error::TakerFailedToSendTransaction);
             }
         }
     }
