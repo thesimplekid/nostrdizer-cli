@@ -10,8 +10,7 @@ use crate::{
 use bitcoin::{Amount, Denomination};
 
 use bitcoincore_rpc_json::{
-    CreateRawTransactionInput, FinalizePsbtResult, ListUnspentResultEntry,
-    WalletProcessPsbtResult,
+    CreateRawTransactionInput, FinalizePsbtResult, ListUnspentResultEntry, WalletProcessPsbtResult,
 };
 use nostr_rust::{events::Event, nostr_client::Client as NostrClient, req::ReqFilter, Identity};
 
@@ -136,8 +135,40 @@ impl Taker {
     /// Gets peer maker inputs from relay
     pub fn get_peer_inputs(
         &mut self,
+        send_amount: Amount,
         peer_count: usize,
-    ) -> Result<Vec<(String, MakerInput)>, Error> {
+        matching_offers: &mut HashMap<String, Offer>,
+    ) -> Result<HashMap<String, (MakerInput, Offer)>, Error> {
+        let mut offers = Vec::from_iter(matching_offers.clone());
+        // Sorts so lowest fee maker is first
+        // Not sure how efficient this is
+        offers.sort_by(|a, b| {
+            (a.1.rel_fee * send_amount.to_float_in(Denomination::Satoshi)
+                + a.1.abs_fee.to_float_in(Denomination::Satoshi))
+            .partial_cmp(
+                &(b.1.rel_fee * send_amount.to_float_in(Denomination::Satoshi)
+                    + b.1.abs_fee.to_float_in(Denomination::Satoshi)),
+            )
+            .unwrap()
+        });
+
+        for (i, peer) in offers.iter().enumerate() {
+            debug!("Peer: {:?} Offer: {:?}", peer.0, peer.1);
+            self.send_fill_offer_message(
+                FillOffer {
+                    offer_id: peer.1.offer_id,
+                    amount: send_amount,
+                },
+                &peer.0,
+            )?;
+            // matched_peers.insert(peer.0.clone(), peer.1);
+
+            if i > peer_count {
+                break;
+            }
+        }
+
+        // subscribe to maker inputs
         let filter = ReqFilter {
             ids: None,
             authors: None,
@@ -151,7 +182,7 @@ impl Taker {
 
         let subcription_id = &self.nostr_client.subscribe(vec![filter])?;
 
-        let mut peer_inputs = vec![];
+        let mut peer_inputs = HashMap::new();
         loop {
             let data = &self.nostr_client.next_data()?;
             for (_, message) in data {
@@ -171,15 +202,21 @@ impl Taker {
                             )?
                             .event
                             {
-                                peer_inputs.push((event.pub_key.clone(), maker_input));
+                                peer_inputs.insert(
+                                    event.pub_key.clone(),
+                                    (
+                                        maker_input,
+                                        *matching_offers.get(&event.pub_key.clone()).unwrap(),
+                                    ),
+                                );
                             }
                         }
                     }
                 }
-            }
 
-            if peer_inputs.len() >= peer_count {
-                return Ok(peer_inputs.clone());
+                if peer_inputs.len() >= peer_count {
+                    return Ok(peer_inputs.clone());
+                }
             }
         }
     }
@@ -214,24 +251,27 @@ impl Taker {
     pub fn create_cj(
         &mut self,
         send_amount: Amount,
-        maker_inputs: Vec<(String, MakerInput)>,
-        maker_offers: HashMap<String, Offer>,
+        maker_inputs: &HashMap<String, (MakerInput, Offer)>,
     ) -> Result<String, Error> {
-        let mut inputs = vec![];
         let mut outputs = HashMap::new();
         let mut total_maker_fees = Amount::ZERO;
-        // Iterates over maker inputs and adds their inputs to transaction
-        // (maker_pub_key, maker input)
-        for (maker, maker_input) in maker_inputs {
-            for input in maker_input.inputs.clone() {
-                let raw_input = CreateRawTransactionInput {
-                    txid: input.0,
-                    vout: input.1,
-                    sequence: None,
-                };
-                inputs.push(raw_input);
-            }
+        // REVIEW: Must be a better way to avoid nested map
+        let mut inputs = maker_inputs
+            .values()
+            .flat_map(|(input, _offer)| {
+                input
+                    .inputs
+                    .iter()
+                    .map(|(txid, vout)| CreateRawTransactionInput {
+                        txid: *txid,
+                        vout: *vout,
+                        sequence: None,
+                    })
+                    .collect::<Vec<CreateRawTransactionInput>>()
+            })
+            .collect::<Vec<CreateRawTransactionInput>>();
 
+        for (maker_input, offer) in maker_inputs.values() {
             // Sums up total value of a makers input UTXOs
             let maker_input_val = maker_input.inputs.iter().fold(Amount::ZERO, |val, input| {
                 val + self
@@ -244,17 +284,14 @@ impl Taker {
             outputs.insert(maker_input.cj_out_address.to_string(), send_amount);
 
             // Gets a makers offer from Hashmap in order to calculate their required fee
-            let maker_offer = maker_offers.get(&maker).unwrap();
             let maker_fee = Amount::from_sat(
-                (send_amount.to_float_in(Denomination::Satoshi) * maker_offer.rel_fee).ceil()
-                    as u64,
-            ) + maker_offer.abs_fee;
+                (send_amount.to_float_in(Denomination::Satoshi) * offer.rel_fee).ceil() as u64,
+            ) + offer.abs_fee;
             let change_value = maker_input_val - send_amount + maker_fee;
             outputs.insert(maker_input.change_address.to_string(), change_value);
 
             total_maker_fees += maker_fee;
         }
-
         // Taker inputs
         // TODO: calc fee
         let mining_fee = Amount::from_sat(500);
@@ -344,10 +381,10 @@ impl Taker {
     pub fn get_matching_offers(
         &mut self,
         send_amount: Amount,
-    ) -> Result<Vec<(String, Offer)>, Error> {
+    ) -> Result<HashMap<String, Offer>, Error> {
         // TODO: match should also be based on fee rate
         let offers = self.get_offers()?;
-        let mut matching_offers: Vec<(String, Offer)> = offers
+        let matching_offers: HashMap<String, Offer> = offers
             .into_iter()
             .filter(|(_k, offer)| {
                 offer.maxsize > send_amount
@@ -356,18 +393,6 @@ impl Taker {
                     && offer.abs_fee < self.config.cj_fee.abs_fee
             })
             .collect();
-
-        // Sorts so lowest fee maker is first
-        // Not sure how efficient this is
-        matching_offers.sort_by(|a, b| {
-            (a.1.rel_fee * send_amount.to_float_in(Denomination::Satoshi)
-                + a.1.abs_fee.to_float_in(Denomination::Satoshi))
-            .partial_cmp(
-                &(b.1.rel_fee * send_amount.to_float_in(Denomination::Satoshi)
-                    + b.1.abs_fee.to_float_in(Denomination::Satoshi)),
-            )
-            .unwrap()
-        });
 
         Ok(matching_offers)
     }

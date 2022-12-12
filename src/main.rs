@@ -1,14 +1,14 @@
 use clap::{Parser, Subcommand};
 
 use dotenvy::dotenv;
-use std::{collections::HashMap, env, panic};
+use std::{env, panic};
 
 use log::{debug, error, warn, LevelFilter};
 use nostrdizer::{
     errors::Error as NostrdizerError,
     maker::{Config as MakerConfig, Maker},
     taker,
-    types::{BitcoinCoreCreditals, FillOffer},
+    types::BitcoinCoreCreditals,
 };
 
 use nostr_rust::keys::get_random_secret_key;
@@ -223,45 +223,30 @@ fn main() -> Result<()> {
             }
 
             // REVIEW: if there are no matching offers it just ends
-            let matching_peers = taker.get_matching_offers(send_amount)?;
+            let mut matching_peers = taker.get_matching_offers(send_amount)?;
             debug!("Matching peers {:?}", matching_peers);
             println!("{} makers matched your order", matching_peers.len());
 
-            let mut matched_peers = HashMap::new();
             if matching_peers.is_empty() {
                 bail!("There are no makers that match this order")
             }
 
             println!("Choosing {} peers with the lowest fee", number_of_makers);
-            for (i, peer) in matching_peers.iter().enumerate() {
-                debug!("Peer: {:?} Offer: {:?}", peer.0, peer.1);
-                taker.send_fill_offer_message(
-                    FillOffer {
-                        offer_id: peer.1.offer_id,
-                        amount: send_amount,
-                    },
-                    &peer.0,
-                )?;
-                matched_peers.insert(peer.0.clone(), peer.1);
-
-                if i > number_of_makers {
-                    break;
-                }
-            }
             println!("Sent fill offers to peers");
             println!("Waiting for peer inputs...");
 
             // wait for responses from peers
             // Gets peers psbt inputs
             // loops until enough peers have responded
-            let peer_inputs = taker.get_peer_inputs(number_of_makers)?;
+            let peer_inputs =
+                taker.get_peer_inputs(send_amount, number_of_makers, &mut matching_peers)?;
             println!("Peers have sent inputs creating transaction...");
 
-            let cj = taker.create_cj(send_amount, peer_inputs, matched_peers.clone())?;
+            let cj = taker.create_cj(send_amount, &peer_inputs)?;
 
             // Send unsigned psbt to peers
-            for (pub_key, maker_input) in matched_peers {
-                taker.send_unsigned_psbt(&pub_key, maker_input.offer_id, &cj)?;
+            for (pub_key, (_maker_input, offer)) in peer_inputs {
+                taker.send_unsigned_psbt(&pub_key, offer.offer_id, &cj)?;
             }
 
             println!("Waiting for peer signatures...");
