@@ -252,6 +252,7 @@ pub fn verify_psbt(
             };
 
             Ok(VerifyCJInfo {
+                txid: tx.txid,
                 mining_fee,
                 maker_fee,
                 verifyed: abs_fee_check
@@ -269,6 +270,7 @@ pub fn verify_psbt(
 
             let rel_fee_check = fee_as_percent.lt(&cj_fee.rel_fee);
             Ok(VerifyCJInfo {
+                txid: tx.txid,
                 mining_fee,
                 maker_fee,
                 verifyed: abs_fee_check

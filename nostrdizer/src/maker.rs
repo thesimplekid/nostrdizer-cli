@@ -11,11 +11,11 @@ use nostr_rust::{
     Identity,
 };
 
-use bitcoin::Amount;
+use bitcoin::{Amount, Txid};
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::WalletProcessPsbtResult;
 
-use log::debug;
+use log::{debug, warn};
 
 use std::str::FromStr;
 
@@ -349,5 +349,79 @@ impl Maker {
             &mut self.nostr_client,
         )?;
         Ok(())
+    }
+
+    pub fn wait_for_broadcast(&mut self, fill_offer: &FillOffer, txid: Txid) -> Result<(), Error> {
+        // Listen for DMs
+        // if 20127 verify/sign respond wait for brodcast
+        // if 20129 broadcast to BTC
+        // if wait time is too long error and republish
+        let filter = ReqFilter {
+            ids: None,
+            authors: None,
+            kinds: Some(vec![20127, 20129]),
+            e: None,
+            p: Some(vec![self.identity.public_key_str.clone()]),
+            since: None,
+            until: None,
+            limit: None,
+        };
+
+        let subscription_id = self.nostr_client.subscribe(vec![filter])?;
+
+        let started_waiting = get_timestamp();
+        let mut txid = txid;
+        loop {
+            let data = self.nostr_client.next_data()?;
+            for (_, message) in data {
+                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
+                    if event[0] == "EOSE" && event[1].as_str() == Some(&subscription_id) {
+                        break;
+                    }
+                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                        match event {
+                            Event { kind: 20127, .. } => {
+                                if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) =
+                                    decrypt_message(
+                                        &self.identity.secret_key,
+                                        &event.pub_key,
+                                        &event.content,
+                                    )?
+                                    .event
+                                {
+                                    if let Ok(psbt_info) =
+                                        self.verify_psbt(fill_offer, &unsigned_psbt.psbt)
+                                    {
+                                        if psbt_info.verifyed {
+                                            let signed_psbt = self.sign_psbt(&unsigned_psbt.psbt)?;
+                                            self.send_signed_psbt(
+                                                &event.pub_key,
+                                                fill_offer.clone(),
+                                                &signed_psbt,
+                                            )?;
+                                            txid = psbt_info.txid;
+                                        } else {
+                                            warn!("Transaction could not be verified");
+                                        }
+                                    }
+                                    // self.nostr_client.unsubscribe(&subscription_id)?;
+                                    // return Ok(unsigned_psbt.psbt);
+                                }
+                            }
+                            Event { kind: 20129, .. } => {}
+                            Event { .. } => debug!("Event data is wrong"),
+                        }
+                    }
+                }
+            }
+            // TODO: Check if transaction has been broadcated
+            if self.rpc_client.get_transaction(&txid, None).is_ok() {
+                return Ok(());
+            }
+            
+            if started_waiting.gt(&(started_waiting + 300)) {
+                return Err(Error::TakerFailedToSendTransaction);
+            }
+        }
     }
 }

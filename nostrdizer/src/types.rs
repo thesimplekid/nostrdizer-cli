@@ -86,6 +86,7 @@ pub struct BitcoinCoreCreditals {
 /// Final CJ transaction info
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VerifyCJInfo {
+    pub txid: Txid,
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
     pub mining_fee: SignedAmount,
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
