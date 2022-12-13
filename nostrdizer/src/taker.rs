@@ -12,10 +12,13 @@ use bitcoin::{Amount, Denomination};
 use bitcoincore_rpc_json::{
     CreateRawTransactionInput, FinalizePsbtResult, ListUnspentResultEntry, WalletProcessPsbtResult,
 };
-use nostr_rust::{events::Event, nostr_client::Client as NostrClient, req::ReqFilter, Identity};
+use nostr_rust::{
+    events::Event, nostr_client::Client as NostrClient, req::ReqFilter, utils::get_timestamp,
+    Identity,
+};
 
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
-use log::debug;
+use log::{debug, info};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -51,10 +54,10 @@ impl Taker {
             // TODO: Get this from config
             cj_fee: CJFee {
                 rel_fee: 0.30,
-                abs_fee: Amount::from_sat(5000),
+                abs_fee: Amount::from_sat(10000),
             },
             mining_fee: MaxMineingFee {
-                abs_fee: Amount::from_sat(5000),
+                abs_fee: Amount::from_sat(10000),
                 rel_fee: 0.20,
             },
         };
@@ -152,7 +155,8 @@ impl Taker {
             .unwrap()
         });
 
-        for (i, peer) in offers.iter().enumerate() {
+        let mut last_peer = 0;
+        for peer in &offers {
             debug!("Peer: {:?} Offer: {:?}", peer.0, peer.1);
             self.send_fill_offer_message(
                 FillOffer {
@@ -161,9 +165,8 @@ impl Taker {
                 },
                 &peer.0,
             )?;
-            // matched_peers.insert(peer.0.clone(), peer.1);
-
-            if i > peer_count {
+            last_peer += 1;
+            if last_peer >= peer_count {
                 break;
             }
         }
@@ -183,6 +186,8 @@ impl Taker {
         let subcription_id = &self.nostr_client.subscribe(vec![filter])?;
 
         let mut peer_inputs = HashMap::new();
+        // Get time stamp that waiting started
+        let mut started_waiting = get_timestamp();
         loop {
             let data = &self.nostr_client.next_data()?;
             for (_, message) in data {
@@ -216,6 +221,35 @@ impl Taker {
 
                 if peer_inputs.len() >= peer_count {
                     return Ok(peer_inputs.clone());
+                }
+                // Check if time waited is more then set
+                // Send fill offer to the next x peers
+                // Where x is peers responded - peers required
+                // Reset started waiting time
+                if started_waiting + 15 > get_timestamp() {
+                    // TODO: Check if there are any matching makers left
+                    let num_failed_to_respond = peer_count - peer_inputs.len();
+                    if num_failed_to_respond > offers.len() - last_peer {
+                        return Err(Error::NotEnoughMakers);
+                    }
+
+                    info!(
+                        "{} makers did not respond, sending to new makers",
+                        num_failed_to_respond
+                    );
+
+                    for _i in 0..num_failed_to_respond {
+                        let peer = &offers[last_peer];
+                        self.send_fill_offer_message(
+                            FillOffer {
+                                offer_id: peer.1.offer_id,
+                                amount: send_amount,
+                            },
+                            &peer.0,
+                        )?;
+                        last_peer += 1;
+                    }
+                    started_waiting = get_timestamp();
                 }
             }
         }

@@ -4,7 +4,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Bitcoin Rpc error")]
+    #[error("Bitcoin Rpc error: {}", _0)]
     BitcoinRpcError(bitcoincore_rpc::Error),
 
     #[error("No matching utxos")]
@@ -57,6 +57,9 @@ pub enum Error {
 
     #[error("Taker did not respond with transaction")]
     TakerFailedToSendTransaction,
+
+    #[error("Not enough makers")]
+    NotEnoughMakers,
 }
 
 impl From<bitcoincore_rpc::Error> for Error {

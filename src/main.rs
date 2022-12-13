@@ -77,7 +77,6 @@ enum Commands {
         number_of_makers: Option<usize>,
         // Add: max fee
     },
-    // TODO: Run maker should check if offer is published and publish an offer if not
     /// Run as maker
     RunMaker {
         #[arg(long)]
