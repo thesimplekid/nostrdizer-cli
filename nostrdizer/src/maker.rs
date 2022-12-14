@@ -15,7 +15,7 @@ use bitcoin::{Amount, Txid};
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::WalletProcessPsbtResult;
 
-use log::{debug, warn};
+use log::{debug, info, warn};
 
 use std::str::FromStr;
 
@@ -338,7 +338,7 @@ impl Maker {
     pub fn send_signed_psbt(
         &mut self,
         peer_pub_key: &str,
-        fill_offer: FillOffer,
+        fill_offer: &FillOffer,
         signed_psbt: &WalletProcessPsbtResult,
     ) -> Result<(), Error> {
         utils::send_signed_psbt(
@@ -352,6 +352,7 @@ impl Maker {
     }
 
     pub fn wait_for_broadcast(&mut self, fill_offer: &FillOffer, txid: Txid) -> Result<(), Error> {
+        info!("Waiting for broadcast: {}", txid);
         // Listen for DMs
         // if 20127 verify/sign respond wait for brodcast
         // if 20129 broadcast to BTC
@@ -372,8 +373,14 @@ impl Maker {
         let started_waiting = get_timestamp();
         let mut txid = txid;
         loop {
+            if self.rpc_client.get_transaction(&txid, None).is_ok() {
+                return Ok(());
+            }
+
             let data = self.nostr_client.next_data()?;
+            debug!("{:?}", data);
             for (_, message) in data {
+                debug!("In for");
                 if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
                     if event[0] == "EOSE" && event[1].as_str() == Some(&subscription_id) {
                         break;
@@ -381,6 +388,7 @@ impl Maker {
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
                         match event {
                             Event { kind: 20127, .. } => {
+                                debug!("Got unsigned CJ");
                                 if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) =
                                     decrypt_message(
                                         &self.identity.secret_key,
@@ -393,10 +401,11 @@ impl Maker {
                                         self.verify_psbt(fill_offer, &unsigned_psbt.psbt)
                                     {
                                         if psbt_info.verifyed {
-                                            let signed_psbt = self.sign_psbt(&unsigned_psbt.psbt)?;
+                                            let signed_psbt =
+                                                self.sign_psbt(&unsigned_psbt.psbt)?;
                                             self.send_signed_psbt(
                                                 &event.pub_key,
-                                                fill_offer.clone(),
+                                                fill_offer,
                                                 &signed_psbt,
                                             )?;
                                             txid = psbt_info.txid;
@@ -414,11 +423,7 @@ impl Maker {
                     }
                 }
             }
-            // TODO: Check if transaction has been broadcated
-            if self.rpc_client.get_transaction(&txid, None).is_ok() {
-                return Ok(());
-            }
-            
+
             if started_waiting.gt(&(started_waiting + 300)) {
                 return Err(Error::TakerFailedToSendTransaction);
             }

@@ -237,7 +237,7 @@ fn main() -> Result<()> {
             // wait for responses from peers
             // Gets peers psbt inputs
             // loops until enough peers have responded
-            let peer_inputs =
+            let (peer_inputs, mut backup_offers) =
                 taker.get_peer_inputs(send_amount, number_of_makers, &mut matching_peers)?;
             println!("Peers have sent inputs creating transaction...");
 
@@ -251,7 +251,8 @@ fn main() -> Result<()> {
             println!("Waiting for peer signatures...");
             // Wait for signed psbts
             // Combine signed psbt
-            let peer_signed_psbt = taker.get_signed_peer_psbts(number_of_makers)?;
+            let peer_signed_psbt =
+                taker.get_signed_peer_psbts(send_amount, number_of_makers, &mut backup_offers)?;
             println!("Makers have signed transaction, signing ...");
 
             // Taker Sign psbt
@@ -361,20 +362,23 @@ fn main() -> Result<()> {
 
                 let (peer_pubkey, fill_offer) = maker.get_fill_offer()?;
 
-                println!("Received fill Offer: {:?}", fill_offer);
+                println!("Received fill Offer: {:?}", &fill_offer);
 
                 maker.delete_active_offer()?;
 
                 let maker_input = maker.get_inputs(&fill_offer)?;
                 maker.send_maker_input(&peer_pubkey, maker_input)?;
                 debug!("Sent Maker Input");
+                // panic!();
 
                 match maker.get_unsigned_cj_psbt() {
                     Ok(unsigned_psbt) => {
                         if let Ok(psbt_info) = maker.verify_psbt(&fill_offer, &unsigned_psbt) {
                             if psbt_info.verifyed {
                                 let signed_psbt = maker.sign_psbt(&unsigned_psbt)?;
-                                maker.send_signed_psbt(&peer_pubkey, fill_offer, &signed_psbt)?;
+                                maker.send_signed_psbt(&peer_pubkey, &fill_offer, &signed_psbt)?;
+                                maker.wait_for_broadcast(&fill_offer, psbt_info.txid)?;
+                            
                             } else {
                                 warn!("Transaction could not be verified");
                             }
@@ -385,6 +389,11 @@ fn main() -> Result<()> {
                     }
                     Err(err) => error!("{:?}", err),
                 }
+                // Should wait here until tranaction is broadcated to btc
+                // If taker has to send a new tranaction bc a maker failed to sign
+                // sign and verying
+                // if taker does not respond with either republish and wait for new fill
+                //
             }
         }
     }

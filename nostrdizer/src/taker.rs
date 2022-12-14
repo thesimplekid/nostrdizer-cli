@@ -81,7 +81,12 @@ impl Taker {
     }
 
     /// Gets signed peer psbts
-    pub fn get_signed_peer_psbts(&mut self, peer_count: usize) -> Result<String, Error> {
+    pub fn get_signed_peer_psbts(
+        &mut self,
+        send_amount: Amount,
+        peer_count: usize,
+        backup_offers: &mut Vec<(String, Offer)>,
+    ) -> Result<String, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
@@ -96,9 +101,12 @@ impl Taker {
         let subcription_id = self.nostr_client.subscribe(vec![filter])?;
 
         let mut peer_signed_psbts = HashMap::new();
+        let mut started_waiting = get_timestamp();
         loop {
             let data = self.nostr_client.next_data()?;
+            debug!("{:?}", data);
             for (_, message) in data {
+                debug!("In for");
                 if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
                     if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
                         break;
@@ -132,6 +140,34 @@ impl Taker {
                     }
                 }
             }
+
+            if get_timestamp() - started_waiting > 10 {
+                let num_failed_to_respond = peer_count - peer_signed_psbts.len();
+                if num_failed_to_respond > backup_offers.len() {
+                    debug!("Here");
+                    return Err(Error::NotEnoughMakers);
+                }
+
+                info!(
+                    "{} makers did not respond, sending to new makers",
+                    num_failed_to_respond
+                );
+
+                for i in 0..num_failed_to_respond {
+                    // self.send_fill_offer_message(&backup_offers[i].1, backup_offers[i].0);
+                    let offer = &backup_offers[i];
+                    
+                    self.send_fill_offer_message(
+                        FillOffer {
+                            offer_id: offer.1.offer_id,
+                            amount: send_amount,
+                        },
+                        &offer.0,
+                    )?;
+                }
+                backup_offers.drain(0..num_failed_to_respond);
+                started_waiting = get_timestamp();
+            }
         }
     }
 
@@ -141,7 +177,7 @@ impl Taker {
         send_amount: Amount,
         peer_count: usize,
         matching_offers: &mut HashMap<String, Offer>,
-    ) -> Result<HashMap<String, (MakerInput, Offer)>, Error> {
+    ) -> Result<(HashMap<String, (MakerInput, Offer)>, Vec<(String, Offer)>), Error> {
         let mut offers = Vec::from_iter(matching_offers.clone());
         // Sorts so lowest fee maker is first
         // Not sure how efficient this is
@@ -190,6 +226,7 @@ impl Taker {
         let mut started_waiting = get_timestamp();
         loop {
             let data = &self.nostr_client.next_data()?;
+            debug!("taker dtat {:?}", data);
             for (_, message) in data {
                 if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
                     if event[0] == "EOSE" && event[1].as_str() == Some(subcription_id) {
@@ -220,16 +257,18 @@ impl Taker {
                 }
 
                 if peer_inputs.len() >= peer_count {
-                    return Ok(peer_inputs.clone());
+                    offers.drain(0..last_peer);
+                    return Ok((peer_inputs.clone(), offers));
                 }
                 // Check if time waited is more then set
                 // Send fill offer to the next x peers
                 // Where x is peers responded - peers required
                 // Reset started waiting time
-                if started_waiting + 15 > get_timestamp() {
+                if get_timestamp() - started_waiting > 10 {
                     // TODO: Check if there are any matching makers left
                     let num_failed_to_respond = peer_count - peer_inputs.len();
                     if num_failed_to_respond > offers.len() - last_peer {
+                        debug!("Not enough Maker");
                         return Err(Error::NotEnoughMakers);
                     }
 
@@ -248,8 +287,10 @@ impl Taker {
                             &peer.0,
                         )?;
                         last_peer += 1;
+                        debug!("perr: {}", last_peer);
                     }
                     started_waiting = get_timestamp();
+                    debug!("Resetn peers");
                 }
             }
         }

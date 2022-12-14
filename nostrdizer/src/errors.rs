@@ -16,7 +16,7 @@ pub enum Error {
     #[error("Nostr rust nip4 error")]
     NostrRustError(nostr_rust::nips::nip4::Error),
 
-    #[error("Nostr rust client error")]
+    #[error("Nostr rust client error: {}", _0)]
     NostrRustClientError(nostr_rust::nostr_client::ClientError),
 
     #[error("Nostr rust nip 16 error")]
