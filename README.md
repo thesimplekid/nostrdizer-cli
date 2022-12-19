@@ -20,7 +20,7 @@ Currently Bitcoin Core 23 is required as the core RPC api [changed](https://gith
 
 ### Run Maker 
 ```
-cargo r -- --rpc-url "<url oof bitcoin core RPC API>" run-maker
+cargo r -- --rpc-url "<url of bitcoin core RPC API>" run-maker
 ```
 ### Run Taker
 ```
@@ -45,6 +45,7 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
     - [x] At input collection
     - [ ] At signing
 - [ ] Events should be verified (add this fn to `nostr_rust`)
+- [ ] Taker griefing [#1](https://github.com/thesimplekid/nostrdizer-cli/issues/1)
 - [ ] When maker sends inputs should sign message to prove ownership
 - [ ] Select maker to broadcast transaction (maybe maker doesnt even need to be one of the ones in CJ)
 - [ ] Fidelity Bond (it'll be a bit)
