@@ -19,8 +19,8 @@ use nostr_rust::{
 };
 
 use log::debug;
-use secp256k1::{SecretKey, XOnlyPublicKey};
-
+// use secp256k1::{SecretKey, XOnlyPublicKey};
+use k256::schnorr::{SigningKey, VerifyingKey};
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -28,7 +28,8 @@ pub fn get_offers(nostr_client: &mut NostrClient) -> Result<Vec<(String, Offer)>
     let filter = ReqFilter {
         ids: None,
         authors: None,
-        kinds: Some(vec![10124]),
+        //kinds: Some(vec![10124]),
+        kinds: None,
         e: None,
         p: None,
         since: None,
@@ -38,7 +39,7 @@ pub fn get_offers(nostr_client: &mut NostrClient) -> Result<Vec<(String, Offer)>
 
     let mut offers = Vec::new();
 
-    let events = nostr_client.get_events_of(vec![filter])?;
+    let events = nostr_client.get_events_of(vec![filter]).unwrap();
     for event in events {
         let j_event: NostrdizerMessage = serde_json::from_str(&event.content)?;
         if let NostrdizerMessages::Offer(offer) = j_event.event {
@@ -282,19 +283,19 @@ pub fn verify_psbt(
 }
 
 pub fn encrypt_message(
-    sk: &SecretKey,
+    sk: &SigningKey,
     pk: &str,
     message: &NostrdizerMessage,
 ) -> Result<String, Error> {
-    let x_pub_key = XOnlyPublicKey::from_str(pk)?;
+    let x_pub_key = nostr_rust::keys::verifying_key_from_hex(pk); // XOnlyPublicKey::from_str(pk)?;
     Ok(encrypt(sk, &x_pub_key, &serde_json::to_string(&message)?)?)
 }
 
 pub fn decrypt_message(
-    sk: &SecretKey,
+    sk: &SigningKey,
     pk: &str,
     message: &str,
 ) -> Result<NostrdizerMessage, Error> {
-    let x = XOnlyPublicKey::from_str(pk)?;
-    Ok(serde_json::from_str(&decrypt(sk, &x, message)?)?)
+    let verifying_key = nostr_rust::keys::verifying_key_from_hex(pk); // XOnlyPublicKey::from_str(pk)?;
+    Ok(serde_json::from_str(&decrypt(sk, &verifying_key, message)?)?)
 }

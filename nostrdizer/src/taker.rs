@@ -42,7 +42,20 @@ impl Taker {
         bitcoin_core_creds: BitcoinCoreCreditals,
     ) -> Result<Self, Error> {
         let identity = Identity::from_str(priv_key)?;
-        let nostr_client = NostrClient::new(relay_urls)?;
+        debug!("urls {:?}", relay_urls);
+        let mut nostr_client = NostrClient::new(relay_urls)?;
+        let filter = ReqFilter {
+            ids: None,
+            authors: None,
+            kinds: None,
+            e: None,
+            p: None,
+            since: None,
+            until: None,
+            limit: None,
+        };
+        let events = nostr_client.get_events_of(vec![filter]);
+        debug!("e: {:?}", &events);
         let rpc_client = RPCClient::new(
             &bitcoin_core_creds.rpc_url,
             Auth::UserPass(
@@ -107,33 +120,40 @@ impl Taker {
             debug!("{:?}", data);
             for (_, message) in data {
                 debug!("In for");
-                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
-                    if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
-                        break;
-                    }
+                if let ewebsock::WsEvent::Message(message) = message {
+                    if let ewebsock::WsMessage::Text(msg) = message {
+                        if let Ok(event) = serde_json::from_str::<Value>(&msg.to_string()) {
+                            if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
+                                break;
+                            }
 
-                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20128
-                            && event.tags[0].contains(&self.identity.public_key_str)
-                        {
-                            if let NostrdizerMessages::SignedCJ(signed_psbt) = decrypt_message(
-                                &self.identity.secret_key,
-                                &event.pub_key,
-                                &event.content,
-                            )?
-                            .event
-                            {
-                                peer_signed_psbts.insert(event.pub_key.to_string(), signed_psbt);
+                            if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                                if event.kind == 20128
+                                    && event.tags[0].contains(&self.identity.public_key_str)
+                                {
+                                    if let NostrdizerMessages::SignedCJ(signed_psbt) =
+                                        decrypt_message(
+                                            &self.identity.secret_key,
+                                            &event.pub_key,
+                                            &event.content,
+                                        )?
+                                        .event
+                                    {
+                                        peer_signed_psbts
+                                            .insert(event.pub_key.to_string(), signed_psbt);
 
-                                if peer_signed_psbts.len() >= peer_count {
-                                    let psbts: Vec<String> = peer_signed_psbts
-                                        .values()
-                                        .map(|p| p.psbt.clone())
-                                        .collect();
+                                        if peer_signed_psbts.len() >= peer_count {
+                                            let psbts: Vec<String> = peer_signed_psbts
+                                                .values()
+                                                .map(|p| p.psbt.clone())
+                                                .collect();
 
-                                    let combined_psbt = self.rpc_client.combine_psbt(&psbts)?;
+                                            let combined_psbt =
+                                                self.rpc_client.combine_psbt(&psbts)?;
 
-                                    return Ok(combined_psbt);
+                                            return Ok(combined_psbt);
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -156,7 +176,7 @@ impl Taker {
                 for i in 0..num_failed_to_respond {
                     // self.send_fill_offer_message(&backup_offers[i].1, backup_offers[i].0);
                     let offer = &backup_offers[i];
-                    
+
                     self.send_fill_offer_message(
                         FillOffer {
                             offer_id: offer.1.offer_id,
@@ -225,36 +245,47 @@ impl Taker {
         // Get time stamp that waiting started
         let mut started_waiting = get_timestamp();
         loop {
+            debug!("Loop started: {}", get_timestamp());
             let data = &self.nostr_client.next_data()?;
-            debug!("taker dtat {:?}", data);
+            debug!("taker data {:?}", data);
+            debug!("Got data: {}", get_timestamp());
             for (_, message) in data {
-                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
-                    if event[0] == "EOSE" && event[1].as_str() == Some(subcription_id) {
-                        break;
-                    }
+                if let ewebsock::WsEvent::Message(message) = message {
+                    if let ewebsock::WsMessage::Text(msg) = message {
+                        debug!("Inside for: {}", get_timestamp());
+                        if let Ok(event) = serde_json::from_str::<Value>(&msg.to_string()) {
+                            if event[0] == "EOSE" && event[1].as_str() == Some(subcription_id) {
+                                break;
+                            }
 
-                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20126
-                            && event.tags[0].contains(&self.identity.public_key_str)
-                        {
-                            if let NostrdizerMessages::MakerInputs(maker_input) = decrypt_message(
-                                &self.identity.secret_key,
-                                &event.pub_key,
-                                &event.content,
-                            )?
-                            .event
-                            {
-                                peer_inputs.insert(
-                                    event.pub_key.clone(),
-                                    (
-                                        maker_input,
-                                        *matching_offers.get(&event.pub_key.clone()).unwrap(),
-                                    ),
-                                );
+                            if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                                if event.kind == 20126
+                                    && event.tags[0].contains(&self.identity.public_key_str)
+                                {
+                                    if let NostrdizerMessages::MakerInputs(maker_input) =
+                                        decrypt_message(
+                                            &self.identity.secret_key,
+                                            &event.pub_key,
+                                            &event.content,
+                                        )?
+                                        .event
+                                    {
+                                        peer_inputs.insert(
+                                            event.pub_key.clone(),
+                                            (
+                                                maker_input,
+                                                *matching_offers
+                                                    .get(&event.pub_key.clone())
+                                                    .unwrap(),
+                                            ),
+                                        );
+                                    }
+                                }
                             }
                         }
                     }
                 }
+                debug!("Outside for: {}", get_timestamp());
 
                 if peer_inputs.len() >= peer_count {
                     offers.drain(0..last_peer);
@@ -458,7 +489,7 @@ impl Taker {
         send_amount: Amount,
     ) -> Result<HashMap<String, Offer>, Error> {
         // TODO: match should also be based on fee rate
-        let offers = self.get_offers()?;
+        let offers = self.get_offers().unwrap();
         let matching_offers: HashMap<String, Offer> = offers
             .into_iter()
             .filter(|(_k, offer)| {

@@ -6,11 +6,12 @@ edition = "2021"
 [dependencies]
 chrono = { version = "0.4.22", features = ["serde"] }
 serde = { version = "1.0.147", features = ["derive"] }
-secp256k1 = { version = "0.24", features = ["bitcoin_hashes", "global-context", "rand-std"] }
+# secp256k1 = { version = "0.24", features = ["bitcoin_hashes", "global-context", "rand-std"] }
+k256 = "0.11.6"
 serde_json = "1.0.87"
-nostr_rust = { git = "https://github.com/thesimplekid/nostr_rust", branch = "nostrdizer"}
+# nostr_rust = { git = "https://github.com/thesimplekid/nostr_rust", branch = "nostrdizer"}
 # nostr_rust = "0.13.0"
-# nostr_rust = { path = "../../nostr_rust" }
+nostr_rust = { path = "../../nostr_rust" }
 thiserror = "1"
 url = "2"
 bitcoin = "0.29.2"
@@ -22,3 +23,4 @@ rand = "0.8.5"
 log = "0.4.17"
 env_logger = "0.9.3"
 hex = "0.4.3"
+ewebsock = "0.2.0"

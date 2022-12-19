@@ -91,7 +91,9 @@ enum Commands {
         will_broadcast: Option<bool>,
     },
 }
-fn main() -> Result<()> {
+
+#[tokio::main]
+async fn main() -> Result<()> {
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(
@@ -157,7 +159,7 @@ fn main() -> Result<()> {
                 priv_key
             } else {
                 let (sk, _) = get_random_secret_key();
-                hex::encode(sk.as_ref())
+                hex::encode(sk.to_bytes())
             }
         }
     };

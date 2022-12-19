@@ -177,23 +177,28 @@ impl Maker {
         loop {
             let data = self.nostr_client.next_data()?;
             for (_, message) in data {
-                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
-                    if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
-                        break;
-                    }
+                if let ewebsock::WsEvent::Message(message) = message {
+                    if let ewebsock::WsMessage::Text(msg) = message {
+                        if let Ok(event) = serde_json::from_str::<Value>(&msg.to_string()) {
+                            if event[0] == "EOSE" && event[1].as_str() == Some(&subcription_id) {
+                                break;
+                            }
 
-                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20125
-                            && event.tags[0].contains(&self.identity.public_key_str)
-                        {
-                            if let NostrdizerMessages::FillOffer(fill_offer) = decrypt_message(
-                                &self.identity.secret_key,
-                                &event.pub_key,
-                                &event.content,
-                            )?
-                            .event
-                            {
-                                return Ok((event.pub_key, fill_offer));
+                            if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                                if event.kind == 20125
+                                    && event.tags[0].contains(&self.identity.public_key_str)
+                                {
+                                    if let NostrdizerMessages::FillOffer(fill_offer) =
+                                        decrypt_message(
+                                            &self.identity.secret_key,
+                                            &event.pub_key,
+                                            &event.content,
+                                        )?
+                                        .event
+                                    {
+                                        return Ok((event.pub_key, fill_offer));
+                                    }
+                                }
                             }
                         }
                     }
@@ -282,23 +287,28 @@ impl Maker {
         loop {
             let data = self.nostr_client.next_data()?;
             for (_, message) in data {
-                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
-                    if event[0] == "EOSE" && event[1].as_str() == Some(&subscription_id) {
-                        break;
-                    }
-                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20127
-                            && event.tags[0].contains(&self.identity.public_key_str)
-                        {
-                            if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) = decrypt_message(
-                                &self.identity.secret_key,
-                                &event.pub_key,
-                                &event.content,
-                            )?
-                            .event
-                            {
-                                self.nostr_client.unsubscribe(&subscription_id)?;
-                                return Ok(unsigned_psbt.psbt);
+                if let ewebsock::WsEvent::Message(messsage) = message {
+                    if let ewebsock::WsMessage::Text(msg) = messsage {
+                        if let Ok(event) = serde_json::from_str::<Value>(&msg.to_string()) {
+                            if event[0] == "EOSE" && event[1].as_str() == Some(&subscription_id) {
+                                break;
+                            }
+                            if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                                if event.kind == 20127
+                                    && event.tags[0].contains(&self.identity.public_key_str)
+                                {
+                                    if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) =
+                                        decrypt_message(
+                                            &self.identity.secret_key,
+                                            &event.pub_key,
+                                            &event.content,
+                                        )?
+                                        .event
+                                    {
+                                        self.nostr_client.unsubscribe(&subscription_id)?;
+                                        return Ok(unsigned_psbt.psbt);
+                                    }
+                                }
                             }
                         }
                     }
@@ -381,44 +391,48 @@ impl Maker {
             debug!("{:?}", data);
             for (_, message) in data {
                 debug!("In for");
-                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
-                    if event[0] == "EOSE" && event[1].as_str() == Some(&subscription_id) {
-                        break;
-                    }
-                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        match event {
-                            Event { kind: 20127, .. } => {
-                                debug!("Got unsigned CJ");
-                                if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) =
-                                    decrypt_message(
-                                        &self.identity.secret_key,
-                                        &event.pub_key,
-                                        &event.content,
-                                    )?
-                                    .event
-                                {
-                                    if let Ok(psbt_info) =
-                                        self.verify_psbt(fill_offer, &unsigned_psbt.psbt)
-                                    {
-                                        if psbt_info.verifyed {
-                                            let signed_psbt =
-                                                self.sign_psbt(&unsigned_psbt.psbt)?;
-                                            self.send_signed_psbt(
+                if let ewebsock::WsEvent::Message(message) = message {
+                    if let ewebsock::WsMessage::Text(msg) = message {
+                        if let Ok(event) = serde_json::from_str::<Value>(&msg.to_string()) {
+                            if event[0] == "EOSE" && event[1].as_str() == Some(&subscription_id) {
+                                break;
+                            }
+                            if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                                match event {
+                                    Event { kind: 20127, .. } => {
+                                        debug!("Got unsigned CJ");
+                                        if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) =
+                                            decrypt_message(
+                                                &self.identity.secret_key,
                                                 &event.pub_key,
-                                                fill_offer,
-                                                &signed_psbt,
-                                            )?;
-                                            txid = psbt_info.txid;
-                                        } else {
-                                            warn!("Transaction could not be verified");
+                                                &event.content,
+                                            )?
+                                            .event
+                                        {
+                                            if let Ok(psbt_info) =
+                                                self.verify_psbt(fill_offer, &unsigned_psbt.psbt)
+                                            {
+                                                if psbt_info.verifyed {
+                                                    let signed_psbt =
+                                                        self.sign_psbt(&unsigned_psbt.psbt)?;
+                                                    self.send_signed_psbt(
+                                                        &event.pub_key,
+                                                        fill_offer,
+                                                        &signed_psbt,
+                                                    )?;
+                                                    txid = psbt_info.txid;
+                                                } else {
+                                                    warn!("Transaction could not be verified");
+                                                }
+                                            }
+                                            // self.nostr_client.unsubscribe(&subscription_id)?;
+                                            // return Ok(unsigned_psbt.psbt);
                                         }
                                     }
-                                    // self.nostr_client.unsubscribe(&subscription_id)?;
-                                    // return Ok(unsigned_psbt.psbt);
+                                    Event { kind: 20129, .. } => {}
+                                    Event { .. } => debug!("Event data is wrong"),
                                 }
                             }
-                            Event { kind: 20129, .. } => {}
-                            Event { .. } => debug!("Event data is wrong"),
                         }
                     }
                 }
