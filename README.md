@@ -37,16 +37,14 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
     - [x] Use ephemeral events for messages
     - [x] Delete maker offer
 - [x] Maker should republish offer after completed Coinjoins
-    - [ ] New key with proof of work
+    - [ ] New key with proof of work?
 - [x] Maker republish offer if taker doesn't not respond 
-- [ ] Taker should handle makers not responding 
-    (These both work sorta, it gets stuck in the loop waiting for events
-    since the ephemeral events are not there, async might help with this.)
-    - [x] At input collection
-    - [ ] At signing
 - [ ] use [nip-40](https://github.com/nostr-protocol/nips/blob/master/40.md) expiring events for offers
-- [ ] Events should be verified (add this fn to `nostr_rust`)
+- [ ] Events should be verified
 - [ ] Taker griefing [#1](https://github.com/thesimplekid/nostrdizer-cli/issues/1)
+    - [x] Taker generates and sends Podle commitment
+    - [x] Maker validates poodle commitment
+    - [ ] Maker stores lists of used commits and checks it was not used before (this is what makes it useful)
 - [ ] Fidelity Bond (it'll be a bit)
 - [ ] Cleanup and add tests
 - [ ] Add print outs 

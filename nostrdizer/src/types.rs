@@ -1,6 +1,8 @@
-use bitcoin::{Address, SignedAmount, Txid};
-use serde::{Deserialize, Serialize};
 pub use bitcoin::Amount;
+use bitcoin::{Address, SignedAmount, Txid};
+use bitcoin_hashes::sha256::Hash;
+use secp256k1::PublicKey;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NostrdizerOffer {
@@ -75,8 +77,16 @@ pub struct Fill {
     pub amount: Amount,
     pub tencpubkey: String,
     /// Used for Poodle Hash of P2
-    pub commitment: String,
+    pub commitment: Hash,
     // This isn't needed for nostr as events are signed
+    pub nick_signature: String,
+}
+
+/// Maker pubkey
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename = "pubkey")]
+pub struct Pubkey {
+    pub mencpubkey: String,
     pub nick_signature: String,
 }
 
@@ -120,6 +130,8 @@ pub struct SignedTransaction {
 pub enum NostrdizerMessages {
     Offer(Offer),
     Fill(Fill),
+    PubKey(Pubkey),
+    Auth(AuthCommitment),
     MakerInputs(IoAuth),
     UnsignedCJ(Transaction),
     SignedCJ(SignedTransaction),
@@ -132,6 +144,10 @@ pub enum NostrdizerMessageKind {
     Offer,
     /// Taker filling offer
     FillOffer,
+    /// Maker pub key
+    MakerPubkey,
+    /// TakerAuth
+    Auth,
     /// Maker CJ inputs
     MakerInput,
     MakerPsbt,
@@ -184,4 +200,16 @@ pub struct MaxMineingFee {
     pub abs_fee: Amount,
     /// Max mining fee as percent of send amount
     pub rel_fee: f64,
+}
+
+// TODO: Need to serialize correctly
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct AuthCommitment {
+    #[serde(rename = "P")]
+    pub p: PublicKey,
+    #[serde(rename = "P2")]
+    pub p2: PublicKey,
+    pub commit: Hash,
+    pub sig: Vec<u8>,
+    pub e: Hash,
 }

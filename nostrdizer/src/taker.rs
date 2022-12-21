@@ -1,9 +1,10 @@
 use crate::{
     errors::Error,
+    podle,
     types::{
-        BitcoinCoreCreditals, CJFee, Fill, IoAuth, MaxMineingFee, NostrdizerMessage,
-        NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer, Transaction,
-        VerifyCJInfo,
+        AuthCommitment, BitcoinCoreCreditals, CJFee, Fill, IoAuth, MaxMineingFee,
+        NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer,
+        Transaction, VerifyCJInfo,
     },
     utils::{self, decrypt_message},
 };
@@ -14,19 +15,21 @@ use bitcoincore_rpc_json::{
     CreateRawTransactionInput, ListUnspentResultEntry, SignRawTransactionResult,
 };
 use nostr_rust::{
-    events::Event, nostr_client::Client as NostrClient, req::ReqFilter, utils::get_timestamp,
-    Identity, keys::get_random_secret_key
+    events::Event, keys::get_random_secret_key, nostr_client::Client as NostrClient,
+    req::ReqFilter, utils::get_timestamp, Identity,
 };
 
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use log::{debug, info};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::str::FromStr;
 
 struct Config {
     cj_fee: CJFee,
     mining_fee: MaxMineingFee,
+    minium_makers: usize,
 }
 
 pub struct Taker {
@@ -68,6 +71,7 @@ impl Taker {
                 abs_fee: Amount::from_sat(10000),
                 rel_fee: 0.20,
             },
+            minium_makers: 1,
         };
         let taker = Self {
             identity,
@@ -88,12 +92,59 @@ impl Taker {
         utils::get_unspent(&self.rpc_client)
     }
 
+    // TODO: This doesnt actually do anything
+    pub fn get_maker_pubkey(&mut self) -> Result<(), Error> {
+        let filter = ReqFilter {
+            ids: None,
+            authors: None,
+            kinds: Some(vec![20126]),
+            e: None,
+            p: Some(vec![self.identity.public_key_str.clone()]),
+            since: None,
+            until: None,
+            limit: None,
+        };
+
+        let subscription_id = self.nostr_client.subscribe(vec![filter])?;
+
+        let started_waiting = get_timestamp();
+        loop {
+            let data = self.nostr_client.next_data()?;
+            for (_, message) in data {
+                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
+                    if event[0] == "EOSE" && event[1].as_str() == Some(&subscription_id) {
+                        break;
+                    }
+                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                        if event.kind == 20126
+                            && event.tags[0].contains(&self.identity.public_key_str)
+                        {
+                            if let NostrdizerMessages::PubKey(_pubkey) = decrypt_message(
+                                &self.identity.secret_key,
+                                &event.pub_key,
+                                &event.content,
+                            )?
+                            .event
+                            {
+                                self.nostr_client.unsubscribe(&subscription_id)?;
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+            if started_waiting.gt(&(started_waiting + 300)) {
+                return Err(Error::TakerFailedToSendTransaction);
+            }
+        }
+    }
+
     /// Gets signed peer tx
     pub fn get_signed_peer_transaction(&mut self, peer_count: usize) -> Result<String, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20128]),
+            kinds: Some(vec![20130]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -113,7 +164,7 @@ impl Taker {
                     }
 
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20128
+                        if event.kind == 20130
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::SignedCJ(signed_tx) = decrypt_message(
@@ -148,41 +199,14 @@ impl Taker {
     /// Gets peer maker inputs from relay
     pub fn get_peer_inputs(
         &mut self,
-        send_amount: Amount,
         peer_count: usize,
-        matching_offers: &mut Vec<NostrdizerOffer>,
+        matching_offers: Vec<NostrdizerOffer>,
     ) -> Result<Vec<(NostrdizerOffer, IoAuth)>, Error> {
-        // Sorts vec by lowest CJ fee
-        matching_offers.sort_by_key(|o| o.cjfee);
-        // Removes dupicate maker offers
-        let unique_makers: HashSet<String> =
-            matching_offers.iter().map(|o| o.clone().maker).collect();
-        matching_offers.retain(|o| unique_makers.contains(&o.maker));
-
-        let mut last_peer = 0;
-        for peer in matching_offers.iter_mut() {
-            //debug!("Peer: {:?} Offer: {:?}", peer.0, peer.1);
-            self.send_fill_offer_message(
-                Fill {
-                    offer_id: peer.oid,
-                    amount: send_amount,
-                    tencpubkey: "".to_string(),
-                    commitment: "".to_string(),
-                    nick_signature: "".to_string(),
-                },
-                &peer.maker,
-            )?;
-            last_peer += 1;
-            if last_peer >= peer_count {
-                break;
-            }
-        }
-
         // subscribe to maker inputs
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20126]),
+            kinds: Some(vec![20128]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -194,7 +218,7 @@ impl Taker {
 
         let mut peer_inputs = vec![];
         // Get time stamp that waiting started
-        let mut started_waiting = get_timestamp();
+        let started_waiting = get_timestamp();
         loop {
             let data = &self.nostr_client.next_data()?;
             for (_, message) in data {
@@ -204,7 +228,7 @@ impl Taker {
                     }
 
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20126
+                        if event.kind == 20128
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::MakerInputs(maker_input) = decrypt_message(
@@ -215,6 +239,8 @@ impl Taker {
                             .event
                             {
                                 peer_inputs.push((
+                                    // Finds the peers matching offer
+                                    // pushes (offer, input)
                                     matching_offers
                                         .clone()
                                         .iter()
@@ -227,41 +253,16 @@ impl Taker {
                         }
                     }
                 }
-
+                // TODO: Change this to time out and then be > then min makers
                 if peer_inputs.len() >= peer_count {
                     return Ok(peer_inputs);
                 }
-                // Check if time waited is more then set
-                // Send fill offer to the next x peers
-                // Where x is peers responded - peers required
-                // Reset started waiting time
-                if started_waiting + 15 > get_timestamp() {
-                    // TODO: Check if there are any matching makers left
-                    let num_failed_to_respond = peer_count - peer_inputs.len();
-                    if num_failed_to_respond > matching_offers.len() - last_peer {
-                        return Err(Error::NotEnoughMakers);
+                if get_timestamp() - started_waiting > 60 {
+                    if peer_inputs.len() > self.config.minium_makers {
+                        return Ok(peer_inputs);
+                    } else {
+                        return Err(Error::MakersFailedToRespond);
                     }
-
-                    info!(
-                        "{} makers did not respond, sending to new makers",
-                        num_failed_to_respond
-                    );
-
-                    for _i in 0..num_failed_to_respond {
-                        let peer = &matching_offers[last_peer];
-                        self.send_fill_offer_message(
-                            Fill {
-                                offer_id: peer.oid,
-                                amount: send_amount,
-                                tencpubkey: "".to_string(),
-                                commitment: "".to_string(),
-                                nick_signature: "".to_string(),
-                            },
-                            &peer.maker,
-                        )?;
-                        last_peer += 1;
-                    }
-                    started_waiting = get_timestamp();
                 }
             }
         }
@@ -291,6 +292,11 @@ impl Taker {
         }
 
         Ok((value, inputs))
+    }
+
+    /// Taker generate podle
+    pub fn generate_podle(&self) -> Result<AuthCommitment, Error> {
+        podle::generate_podle(0, &self.rpc_client)
     }
 
     /// Creates CJ transaction
@@ -341,7 +347,6 @@ impl Taker {
         let mining_fee = Amount::from_sat(500);
         let mut taker_inputs = self.get_inputs(send_amount + total_maker_fees + mining_fee)?;
         inputs.append(&mut taker_inputs.1);
-
         // Taker output
         let taker_cj_out = self.rpc_client.get_new_address(Some("Cj out"), None)?;
         outputs.insert(taker_cj_out.to_string(), send_amount);
@@ -399,25 +404,77 @@ impl Taker {
     /// Send fill offer from taker to maker
     pub fn send_fill_offer_message(
         &mut self,
-        fill_offer: Fill,
-        peer_pub_key: &str,
+        send_amount: Amount,
+        peer_count: usize,
+        matching_offers: &mut Vec<NostrdizerOffer>,
+    ) -> Result<Vec<NostrdizerOffer>, Error> {
+        // Sorts vec by lowest CJ fee
+        matching_offers.sort_by_key(|o| o.cjfee);
+        // Removes dupicate maker offers
+        let unique_makers: HashSet<String> =
+            matching_offers.iter().map(|o| o.clone().maker).collect();
+        matching_offers.retain(|o| unique_makers.contains(&o.maker));
+
+        let mut last_peer = 0;
+        let commitment = self.generate_podle()?;
+        let commitment = commitment.commit; // sha256::Hash::hash(commitment.p2.to_string().as_bytes());
+
+        let mut matched_peers = vec![];
+        for peer in matching_offers.iter_mut() {
+            //debug!("Peer: {:?} Offer: {:?}", peer.0, peer.1);
+            let fill_offer = Fill {
+                offer_id: peer.oid,
+                amount: send_amount,
+                tencpubkey: "".to_string(),
+                commitment,
+                nick_signature: "".to_string(),
+            };
+            let message = NostrdizerMessage {
+                event_type: NostrdizerMessageKind::FillOffer,
+                event: NostrdizerMessages::Fill(fill_offer),
+            };
+            let encypted_content =
+                utils::encrypt_message(&self.identity.secret_key, &peer.maker, &message)?;
+
+            self.nostr_client.publish_ephemeral_event(
+                &self.identity,
+                125,
+                &encypted_content,
+                &[vec!["p".to_string(), peer.maker.to_string()]],
+                0,
+            )?;
+            matched_peers.push(peer.clone());
+            last_peer += 1;
+            if last_peer >= peer_count {
+                break;
+            }
+        }
+
+        Ok(matched_peers)
+    }
+
+    pub fn send_auth_message(
+        &mut self,
+        auth_commitment: AuthCommitment,
+        matched_offers: Vec<NostrdizerOffer>,
     ) -> Result<(), Error> {
-        let message = &NostrdizerMessage {
-            event_type: NostrdizerMessageKind::FillOffer,
-            event: NostrdizerMessages::Fill(fill_offer),
+        let message = NostrdizerMessage {
+            event_type: NostrdizerMessageKind::Auth,
+            event: NostrdizerMessages::Auth(auth_commitment),
         };
 
-        let encypted_content =
-            utils::encrypt_message(&self.identity.secret_key, peer_pub_key, message)?;
+        for offer in matched_offers {
+            let encypted_content =
+                utils::encrypt_message(&self.identity.secret_key, &offer.maker, &message)?;
 
-        self.nostr_client.publish_ephemeral_event(
-            &self.identity,
-            125,
-            &encypted_content,
-            &[vec!["p".to_string(), peer_pub_key.to_string()]],
-            0,
-        )?;
-
+            self.nostr_client.publish_ephemeral_event(
+                &self.identity,
+                127,
+                &encypted_content,
+                &[vec!["p".to_string(), offer.maker]],
+                0,
+            )?;
+        }
         Ok(())
     }
 
@@ -488,7 +545,7 @@ impl Taker {
 
         self.nostr_client.publish_ephemeral_event(
             &self.identity,
-            127,
+            129,
             &encypted_content,
             &[vec!["p".to_string(), peer_pub_key.to_string()]],
             0,

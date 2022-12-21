@@ -32,7 +32,7 @@ pub enum Error {
     Secp256k1Error(secp256k1::Error),
 
     #[error("Could not broadcast transaction")]
-    FailedToBrodcast,
+    FailedToBroadcast,
 
     #[error("CJ value over max")]
     CJValueOveMax,
@@ -63,6 +63,18 @@ pub enum Error {
 
     #[error("Not enough makers")]
     NotEnoughMakers,
+
+    #[error("Could not verify podle")]
+    PodleVerifyFailed,
+
+    #[error("Podle commit does not match provided")]
+    PodleCommitment,
+
+    #[error("Could not get num")]
+    GetNum,
+
+    #[error("Not enough makers responded")]
+    MakersFailedToRespond,
 }
 
 impl From<bitcoincore_rpc::Error> for Error {

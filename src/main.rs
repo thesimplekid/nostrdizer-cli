@@ -7,8 +7,9 @@ use log::{debug, error, warn, LevelFilter};
 use nostrdizer::{
     errors::Error as NostrdizerError,
     maker::{Config as MakerConfig, Maker},
+    podle::verify_podle,
     taker,
-    types::{BitcoinCoreCreditals, Amount}
+    types::{Amount, BitcoinCoreCreditals},
 };
 
 use serde::{Deserialize, Serialize};
@@ -61,6 +62,8 @@ struct Config {
 
 #[derive(Subcommand, Debug, Serialize, Deserialize)]
 enum Commands {
+    /// Test Poodle
+    TestPoodle,
     /// List unspent UTXOs
     ListUnspent,
     /// Show wallet balance
@@ -147,7 +150,7 @@ fn main() -> Result<()> {
         rpc_username,
         rpc_password,
     };
-/*
+    /*
     let priv_key = match args.priv_key {
         Some(priv_key) => priv_key,
         None => {
@@ -176,6 +179,18 @@ fn main() -> Result<()> {
     let relay_urls: Vec<&str> = relay_urls.iter().map(|x| x as &str).collect();
 
     match &args.command {
+        Commands::TestPoodle => {
+            let taker = taker::Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
+            let commit = taker.generate_podle()?;
+
+            if let Err(_err) = verify_podle(255, commit.clone(), commit.commit) {
+                panic!()
+            }
+
+            // let num = podle::get_nums(0).unwrap().to_string();
+
+            // println!("{:?}", num);
+        }
         Commands::ListUnspent => {
             let mut taker = taker::Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
             let unspent = taker.get_unspent();
@@ -222,31 +237,50 @@ fn main() -> Result<()> {
 
             // REVIEW: if there are no matching offers it just ends
             let mut matching_peers = taker.get_matching_offers(send_amount)?;
-            debug!("Matching peers {:?}", matching_peers);
-            println!("{} makers matched your order", matching_peers.len());
+            // debug!("Matching peers {:?}", matching_peers);
+            // println!("{} makers matched your order", matching_peers.len());
 
             if matching_peers.is_empty() {
                 bail!("There are no makers that match this order")
             }
 
             println!("Choosing {} peers with the lowest fee", number_of_makers);
-            println!("Sent fill offers to peers");
-            println!("Waiting for peer inputs...");
 
+            // Step 2: Send fill offer (!fill)
+            let matched_offers = taker.send_fill_offer_message(
+                send_amount,
+                number_of_makers,
+                &mut matching_peers,
+            )?;
+
+            println!("Sent fill offers to peers");
+
+            // Step 3: Receive maker pub key (!pubkey)
+            // TODO: Just gonna skip this for now
+            taker.get_maker_pubkey()?;
+            debug!("got pub key");
+
+            println!("Waiting for peer inputs...");
+            // Step 4: Send auth (!auth)
+            let auth_commitment = taker.generate_podle()?;
+            taker.send_auth_message(auth_commitment, matched_offers)?;
+            debug!("Sent auth");
+
+            // Step 5: Receive maker inputs (!ioauth)
             // wait for responses from peers
             // Gets peers tx inputs
             // loops until enough peers have responded
-            let peer_inputs =
-                taker.get_peer_inputs(send_amount, number_of_makers, &mut matching_peers)?;
+            let peer_inputs = taker.get_peer_inputs(number_of_makers, matching_peers)?;
             println!("Peers have sent inputs creating transaction...");
 
+            // Step 6: Send CJ transaction (!tx)
             let cj = taker.create_cj(send_amount, &peer_inputs)?;
-
             // Send unsigned tx to peers
             for (offer, _maker_input) in peer_inputs {
                 taker.send_unsigned_transaction(&offer.maker, &cj)?;
             }
 
+            // Step 7: Sign TX (!sig)
             println!("Waiting for peer signatures...");
             // Wait for signed txs
             // Combine signed tx
@@ -341,33 +375,44 @@ fn main() -> Result<()> {
                 maxsize,
                 will_broadcast,
             };
-                let mut maker = Maker::new(
-                    args.priv_key,
-                    relay_urls.clone(),
-                    &mut config,
-                    bitcoin_core_creds,
-                )?;
+            let mut maker = Maker::new(
+                args.priv_key,
+                relay_urls.clone(),
+                &mut config,
+                bitcoin_core_creds,
+            )?;
             loop {
-
+                // Step 1: Publish order (!ordertype)
                 maker.publish_offer()?;
 
                 // println!("Running maker with {:?}", offer);
                 println!("Waiting for takers...");
 
+                // Step 2: Receives fill offer (!fill)
                 let (peer_pubkey, fill_offer) = maker.get_fill_offer()?;
 
                 println!("Received fill Offer: {:?}", fill_offer);
 
                 maker.delete_active_offer()?;
 
+                // Step 3: sends maker (!pubkey)
+                maker.send_pubkey(&peer_pubkey)?;
+
+                // Step 4: Receives !auth
+                let auth_commitment = maker.get_commitment_auth()?;
+                // TODO: Handle errors
+                maker.verify_podle(auth_commitment)?;
+
+                // Step 5: sends (!ioauth)
                 let maker_input = maker.get_inputs(&fill_offer)?;
                 maker.send_maker_input(&peer_pubkey, maker_input)?;
-                debug!("Sent Maker Input");
 
+                // Step 6: Receives Transaction Hex (!tx)
                 match maker.get_unsigned_cj_transaction() {
                     Ok(unsigned_tx) => {
                         if let Ok(tx_info) = maker.verify_transaction(&fill_offer, &unsigned_tx) {
                             if tx_info.verifyed {
+                                // Step 7: Signs and sends transaction to taker if verified (!sig)
                                 let signed_tx = maker.sign_tx_hex(&unsigned_tx)?;
                                 maker.send_signed_tx(&peer_pubkey, &signed_tx)?;
                             } else {

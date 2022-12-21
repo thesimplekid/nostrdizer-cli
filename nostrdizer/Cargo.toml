@@ -13,7 +13,8 @@ nostr_rust = "0.14.0"
 # nostr_rust = { path = "../../nostr_rust" }
 thiserror = "1"
 url = "2"
-bitcoin = "0.29.2"
+bitcoin = { version = "0.29.2" }
+bitcoin_hashes = "0.11.0"
 # bitcoincore-rpc =  { path = "../../rust-bitcoincore-rpc/client" } 
 # bitcoincore-rpc-json = { path = "../../rust-bitcoincore-rpc/json"} 
 bitcoincore-rpc =  { git = "https://github.com/thesimplekid/rust-bitcoincore-rpc",  branch = "nostrdizer"}
@@ -22,3 +23,4 @@ rand = "0.8.5"
 log = "0.4.17"
 env_logger = "0.9.3"
 hex = "0.4.3"
+num-bigint = "0.4.3"
