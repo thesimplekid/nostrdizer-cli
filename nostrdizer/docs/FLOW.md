@@ -7,28 +7,40 @@ This document explains the order flow of nostrdizer.
 ## Overview
 
 nostrdizer uses both replaceable and ephemeral events. Replaceable events are used by the maker to publish an `offer`.
-ephemeral event are used for the coordination of a ephemeral transaction.
+ephemeral event are used for the coordination of a transaction.
 
 ## Message Kinds
 
-| Message Kind | `kind` |     type   | sender |
-| -------------|--------|------------| ------ |
-| Offer        | 10124  | Replaceable| Maker  |
-| FillOffer    | 20125  | Ephemeral  | Taker  |
-| MakerInput   | 20126  | Ephemeral  | Maker  |
-| UnsignedCJ   | 20127  | Ephemeral  | Taker  |
-| SignedCJ     | 20128  | Ephemeral  | Maker  |
+| Message Kind  | `kind` |     type   | sender |
+| ------------- |--------|------------| ------ |
+| Absolute Offer| 10123  | Replaceable| Maker  |
+| Relative Offer| 10124  | Replaceable| Maker  |
+| FillOffer     | 20125  | Ephemeral  | Taker  |
+| MakerInput    | 20126  | Ephemeral  | Maker  |
+| UnsignedCJ    | 20127  | Ephemeral  | Taker  |
+| SignedCJ      | 20128  | Ephemeral  | Maker  |
 
 
 ## Offer 
 Offer events are used by the maker to publish the parameter of collaborative transactions they are willing to participate in.
-Contents of an offer event:
-- `offer_id` `u32`
-- `abs_fee` `Amount` the absolute fee the maker expects to receive
-- `rel_fee` `f64` the percent of send amount maker expects as a fee
-- `minsize` `Amount` the minimum size of the send amount 
-- `maxsize` `Amount` the maximum size of the send amount
-- `will_brodcast` `bool` if the maker is willing to broadcast the final transaction
+
+### Relative Offer
+
+Contents of an relative offer event:
+- `oid` `u32`
+- `minsize` `Amount` The minimum amount CJ a maker will partake in
+- `maxsize` `Amount` The maximum amount CJ a maker will partake in 
+- `txfee` `Amount` The amount the maker will contribute to mining fee 
+- `cjfee` `f64` The percent as a decimal the maker expects 
+
+### Absolute Offer
+
+Contents of an absolute offer event:
+- `oid` `u32`
+- `minsize` `Amount` The minimum amount CJ a maker will partake in
+- `maxsize` `Amount` The maximum amount CJ a maker will partake in 
+- `txfee` `Amount` The amount the maker will contribute to mining fee
+- `cjfee` `Amount` The amount the maker expects 
 
 ## Fill Offer
 Taker sends a `filloffer` to the maker to alert them they would like to use them in a transaction

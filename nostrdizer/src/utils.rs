@@ -28,7 +28,7 @@ pub fn get_offers(nostr_client: &mut NostrClient) -> Result<Vec<(String, Offer)>
     let filter = ReqFilter {
         ids: None,
         authors: None,
-        kinds: Some(vec![10124]),
+        kinds: Some(vec![10123, 10124]),
         e: None,
         p: None,
         since: None,

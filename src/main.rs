@@ -244,8 +244,8 @@ fn main() -> Result<()> {
             let cj = taker.create_cj(send_amount, &peer_inputs)?;
 
             // Send unsigned psbt to peers
-            for (pub_key, (_maker_input, offer)) in peer_inputs {
-                taker.send_unsigned_psbt(&pub_key, offer.offer_id, &cj)?;
+            for (offer, _maker_input) in peer_inputs {
+                taker.send_unsigned_psbt(&offer.maker, offer.oid, &cj)?;
             }
 
             println!("Waiting for peer signatures...");
@@ -354,9 +354,9 @@ fn main() -> Result<()> {
                     bitcoin_core_creds.clone(),
                 )?;
 
-                let offer = maker.publish_offer()?;
+                maker.publish_offer()?;
 
-                println!("Running maker with {:?}", offer);
+                // println!("Running maker with {:?}", offer);
                 println!("Waiting for takers...");
 
                 let (peer_pubkey, fill_offer) = maker.get_fill_offer()?;

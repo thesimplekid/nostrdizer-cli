@@ -1,8 +1,8 @@
 use crate::{
     errors::Error,
     types::{
-        BitcoinCoreCreditals, CJFee, FillOffer, MakerInput, NostrdizerMessage,
-        NostrdizerMessageKind, NostrdizerMessages, Offer, VerifyCJInfo,
+        AbsOffer, BitcoinCoreCreditals, CJFee, FillOffer, MakerInput, NostrdizerMessage,
+        NostrdizerMessageKind, NostrdizerMessages, Offer, RelOffer, VerifyCJInfo,
     },
     utils::{self, decrypt_message},
 };
@@ -76,7 +76,7 @@ impl Maker {
         Ok(maker)
     }
 
-    pub fn publish_offer(&mut self) -> Result<Offer, Error> {
+    pub fn publish_offer(&mut self) -> Result<(), Error> {
         let mut rng = thread_rng();
 
         let maxsize = match self.config.maxsize {
@@ -88,25 +88,40 @@ impl Maker {
         if maxsize < Amount::from_sat(5000) {
             return Err(Error::NoMatchingUtxo);
         }
-
-        let offer = Offer {
-            offer_id: rng.gen(),
-            abs_fee: self.config.abs_fee,
-            rel_fee: self.config.rel_fee,
+        // Publish Relative Offer
+        let offer = RelOffer {
+            oid: rng.gen(),
+            cjfee: self.config.rel_fee,
             minsize: self.config.minsize,
             maxsize,
-            will_broadcast: self.config.will_broadcast,
+            txfee: Amount::ZERO,
         };
 
         let content = serde_json::to_string(&NostrdizerMessage {
             event_type: NostrdizerMessageKind::Offer,
-            event: NostrdizerMessages::Offer(offer),
+            event: NostrdizerMessages::Offer(Offer::RelOffer(offer)),
         })?;
 
         self.nostr_client
             .publish_replaceable_event(&self.identity, 124, &content, &[], 0)?;
 
-        Ok(offer)
+        // Publish Absolute Offer
+        let offer = AbsOffer {
+            oid: rng.gen(),
+            cjfee: self.config.abs_fee,
+            minsize: self.config.minsize,
+            maxsize,
+            txfee: Amount::ZERO,
+        };
+        let content = serde_json::to_string(&NostrdizerMessage {
+            event_type: NostrdizerMessageKind::Offer,
+            event: NostrdizerMessages::Offer(Offer::AbsOffer(offer)),
+        })?;
+
+        self.nostr_client
+            .publish_replaceable_event(&self.identity, 123, &content, &[], 0)?;
+
+        Ok(())
     }
 
     /// Get active offer

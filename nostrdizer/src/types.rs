@@ -1,24 +1,53 @@
 use bitcoin::{Address, Amount, SignedAmount, Txid};
 use serde::{Deserialize, Serialize};
 
-/// Maker offer
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct NostrdizerOffer {
+    pub maker: String,
+    pub oid: u32,
+    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    pub txfee: Amount,
+    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    pub cjfee: Amount,
+}
+
+/// Maker Relative Offer
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
-pub struct Offer {
-    /// Offer Id
-    pub offer_id: u32,
-    /// Absolute fee to maker
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
-    pub abs_fee: Amount,
-    /// Percent of send amount fee to maker
-    pub rel_fee: f64,
-    /// Min size of coinjoin for maker
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+pub struct RelOffer {
+    /// Order Id
+    pub oid: u32,
+    /// Min size of CJ
+    /// REVIEW: Double check JM uses sats
+    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
     pub minsize: Amount,
-    /// Max size of coinjoin for maker
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    /// Max size of CJ
+    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
     pub maxsize: Amount,
-    /// If maker is willing to broadcast final transaction
-    pub will_broadcast: bool,
+    /// Amount Maker will contribute to mining fee
+    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    pub txfee: Amount,
+    /// CJ Fee maker expects
+    pub cjfee: f64,
+}
+
+/// Maker Absolute offer
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub struct AbsOffer {
+    /// Order Id
+    pub oid: u32,
+    /// Min size of CJ
+    /// REVIEW: Double check JM uses sats
+    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    pub minsize: Amount,
+    /// Max size of CJ
+    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    pub maxsize: Amount,
+    /// Amount Maker will contribute to mining fee
+    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    pub txfee: Amount,
+    /// CJ Fee maker expects
+    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    pub cjfee: Amount,
 }
 
 /// Taker fill maker offer
@@ -35,8 +64,18 @@ pub struct Psbt {
     pub psbt: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Offer {
+    #[serde(rename = "sw0reloffer")]
+    RelOffer(RelOffer),
+    #[serde(rename = "sw0absoffer")]
+    AbsOffer(AbsOffer),
+}
+
 /// Possible messages that can be sent
 #[derive(Serialize, Deserialize, Debug, Clone)]
+// Look at these they may be able to tag better and remove the nostrdizer message type field
+// https://serde.rs/enum-representations.html
 pub enum NostrdizerMessages {
     Offer(Offer),
     FillOffer(FillOffer),
@@ -45,7 +84,7 @@ pub enum NostrdizerMessages {
     SignedCJ(Psbt),
 }
 
-/// Kinds if `NostrdizerMessages`
+/// Kinds of `NostrdizerMessages`
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum NostrdizerMessageKind {
     /// Maker offer
