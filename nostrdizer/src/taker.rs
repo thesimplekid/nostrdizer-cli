@@ -1,9 +1,8 @@
 use crate::{
     errors::Error,
     types::{
-        AbsOffer, BitcoinCoreCreditals, CJFee, Fill, MakerInput, MaxMineingFee, NostrdizerMessage,
-        NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer, Psbt, RelOffer,
-        VerifyCJInfo,
+        BitcoinCoreCreditals, CJFee, Fill, MakerInput, MaxMineingFee, NostrdizerMessage,
+        NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer, Psbt, VerifyCJInfo,
     },
     utils::{self, decrypt_message},
 };
@@ -147,13 +146,13 @@ impl Taker {
         matching_offers.sort_by_key(|o| o.cjfee);
         // Removes dupicate maker offers
         let unique_makers: HashSet<String> = matching_offers
-            .into_iter()
+            .iter_mut()
             .map(|o| o.clone().maker)
             .collect();
         matching_offers.retain(|o| unique_makers.contains(&o.maker));
 
         let mut last_peer = 0;
-        for peer in &mut *matching_offers {
+        for peer in matching_offers.iter_mut() {
             //debug!("Peer: {:?} Offer: {:?}", peer.0, peer.1);
             self.send_fill_offer_message(
                 Fill {

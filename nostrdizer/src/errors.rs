@@ -28,6 +28,9 @@ pub enum Error {
     #[error("Bitcoin Sep256k1 error")]
     BitcoinSecpError(bitcoin::secp256k1::Error),
 
+    #[error("Sep256k1 error")]
+    Secp256k1Error(secp256k1::Error),
+
     #[error("Could not broadcast transaction")]
     FailedToBrodcast,
 
@@ -89,6 +92,12 @@ impl From<nostr_rust::nostr_client::ClientError> for Error {
 impl From<bitcoin::secp256k1::Error> for Error {
     fn from(err: bitcoin::secp256k1::Error) -> Self {
         Self::BitcoinSecpError(err)
+    }
+}
+
+impl From<secp256k1::Error> for Error {
+    fn from(err: secp256k1::Error) -> Self {
+        Self::Secp256k1Error(err)
     }
 }
 
