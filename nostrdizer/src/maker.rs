@@ -1,7 +1,7 @@
 use crate::{
     errors::Error,
     types::{
-        AbsOffer, BitcoinCoreCreditals, CJFee, Fill, MakerInput, NostrdizerMessage,
+        AbsOffer, BitcoinCoreCreditals, CJFee, Fill, IoAuth, NostrdizerMessage,
         NostrdizerMessageKind, NostrdizerMessages, Offer, RelOffer, VerifyCJInfo,
     },
     utils::{self, decrypt_message},
@@ -226,7 +226,7 @@ impl Maker {
     }
 
     /// Gets maker input for CJ
-    pub fn get_inputs(&mut self, fill_offer: &Fill) -> Result<MakerInput, Error> {
+    pub fn get_inputs(&mut self, fill_offer: &Fill) -> Result<IoAuth, Error> {
         let unspent = self.rpc_client.list_unspent(None, None, None, None, None)?;
         let mut inputs = vec![];
         let mut value: Amount = Amount::ZERO;
@@ -241,17 +241,19 @@ impl Maker {
             }
         }
 
-        let cj_out_address = self.rpc_client.get_new_address(Some("CJ out"), None)?;
-        debug!("Maker cj out: {}", cj_out_address);
+        let coinjoin_address = self.rpc_client.get_new_address(Some("CJ out"), None)?;
+        debug!("Maker cj out: {}", coinjoin_address);
 
         let change_address = self.rpc_client.get_raw_change_address(None).unwrap();
         debug!("Maker change out: {}", change_address);
 
-        let maker_input = MakerInput {
-            offer_id: fill_offer.offer_id,
-            inputs,
-            cj_out_address,
+        let maker_input = IoAuth {
+            utxos: inputs,
+            coinjoin_address,
             change_address,
+            maker_auth_pub: "".to_string(),
+            bitcoin_sig: "".to_string(),
+            nick_signature: "".to_string(),
         };
 
         Ok(maker_input)
@@ -261,7 +263,7 @@ impl Maker {
     pub fn send_maker_input(
         &mut self,
         peer_pub_key: &str,
-        maker_input: MakerInput,
+        maker_input: IoAuth,
     ) -> Result<(), Error> {
         let message = NostrdizerMessage {
             event_type: NostrdizerMessageKind::MakerPsbt,

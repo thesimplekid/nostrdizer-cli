@@ -54,6 +54,14 @@ pub struct AbsOffer {
     pub nick_signature: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Offer {
+    #[serde(rename = "sw0reloffer")]
+    RelOffer(RelOffer),
+    #[serde(rename = "sw0absoffer")]
+    AbsOffer(AbsOffer),
+}
+
 /// Taker Fill
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename = "fill")]
@@ -70,12 +78,6 @@ pub struct Fill {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Psbt {
-    pub offer_id: u32,
-    pub psbt: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename = "tx")]
 pub struct Transaction {
     /// Transaction hex
@@ -85,11 +87,19 @@ pub struct Transaction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum Offer {
-    #[serde(rename = "sw0reloffer")]
-    RelOffer(RelOffer),
-    #[serde(rename = "sw0absoffer")]
-    AbsOffer(AbsOffer),
+#[serde(rename = "ioauth")]
+pub struct IoAuth {
+    // TODO: Serialize as txid:vout
+    #[serde(rename = "ulist")]
+    pub utxos: Vec<(Txid, u32)>,
+    pub maker_auth_pub: String,
+    #[serde(rename = "coinjoinA")]
+    pub coinjoin_address: Address,
+    #[serde(rename = "changeA")]
+    pub change_address: Address,
+    /// bitcoin signature of mencpubkey
+    pub bitcoin_sig: String,
+    pub nick_signature: String,
 }
 
 /// Possible messages that can be sent
@@ -99,9 +109,15 @@ pub enum Offer {
 pub enum NostrdizerMessages {
     Offer(Offer),
     Fill(Fill),
-    MakerInputs(MakerInput),
+    MakerInputs(IoAuth),
     UnsignedCJ(Psbt),
     SignedCJ(Psbt),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Psbt {
+    pub offer_id: u32,
+    pub psbt: String,
 }
 
 /// Kinds of `NostrdizerMessages`
@@ -124,15 +140,6 @@ pub enum NostrdizerMessageKind {
 pub struct NostrdizerMessage {
     pub event_type: NostrdizerMessageKind,
     pub event: NostrdizerMessages,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MakerInput {
-    pub offer_id: u32,
-    pub inputs: Vec<(Txid, u32)>,
-    pub cj_out_address: Address,
-    pub change_address: Address,
-    // Add a signed message feild to prive ownership of inputs
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

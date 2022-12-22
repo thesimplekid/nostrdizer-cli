@@ -1,7 +1,7 @@
 use crate::{
     errors::Error,
     types::{
-        BitcoinCoreCreditals, CJFee, Fill, MakerInput, MaxMineingFee, NostrdizerMessage,
+        BitcoinCoreCreditals, CJFee, Fill, IoAuth, MaxMineingFee, NostrdizerMessage,
         NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer, Psbt, VerifyCJInfo,
     },
     utils::{self, decrypt_message},
@@ -141,14 +141,12 @@ impl Taker {
         send_amount: Amount,
         peer_count: usize,
         matching_offers: &mut Vec<NostrdizerOffer>,
-    ) -> Result<Vec<(NostrdizerOffer, MakerInput)>, Error> {
+    ) -> Result<Vec<(NostrdizerOffer, IoAuth)>, Error> {
         // Sorts vec by lowest CJ fee
         matching_offers.sort_by_key(|o| o.cjfee);
         // Removes dupicate maker offers
-        let unique_makers: HashSet<String> = matching_offers
-            .iter_mut()
-            .map(|o| o.clone().maker)
-            .collect();
+        let unique_makers: HashSet<String> =
+            matching_offers.iter().map(|o| o.clone().maker).collect();
         matching_offers.retain(|o| unique_makers.contains(&o.maker));
 
         let mut last_peer = 0;
@@ -289,7 +287,7 @@ impl Taker {
     pub fn create_cj(
         &mut self,
         send_amount: Amount,
-        maker_inputs: &Vec<(NostrdizerOffer, MakerInput)>,
+        maker_inputs: &Vec<(NostrdizerOffer, IoAuth)>,
     ) -> Result<String, Error> {
         let mut outputs = HashMap::new();
         let mut total_maker_fees = Amount::ZERO;
@@ -298,7 +296,7 @@ impl Taker {
             .iter()
             .flat_map(|(_offer, input)| {
                 input
-                    .inputs
+                    .utxos
                     .iter()
                     .map(|(txid, vout)| CreateRawTransactionInput {
                         txid: *txid,
@@ -311,7 +309,7 @@ impl Taker {
 
         for (offer, maker_input) in maker_inputs {
             // Sums up total value of a makers input UTXOs
-            let maker_input_val = maker_input.inputs.iter().fold(Amount::ZERO, |val, input| {
+            let maker_input_val = maker_input.utxos.iter().fold(Amount::ZERO, |val, input| {
                 val + self
                     .rpc_client
                     .get_tx_out(&input.0, input.1, Some(false))
@@ -319,7 +317,7 @@ impl Taker {
                     .unwrap()
                     .value
             });
-            outputs.insert(maker_input.cj_out_address.to_string(), send_amount);
+            outputs.insert(maker_input.coinjoin_address.to_string(), send_amount);
 
             // Gets a makers offer from Hashmap in order to calculate their required fee
             let maker_fee = offer.cjfee; // Amount::from_sat(
