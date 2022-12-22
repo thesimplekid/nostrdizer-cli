@@ -12,7 +12,7 @@ pub struct NostrdizerOffer {
 }
 
 /// Maker Relative Offer
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct RelOffer {
     /// Order Id
     pub oid: u32,
@@ -28,10 +28,12 @@ pub struct RelOffer {
     pub txfee: Amount,
     /// CJ Fee maker expects
     pub cjfee: f64,
+    // This isn't needed for nostr as events are signed
+    pub nick_signature: String,
 }
 
 /// Maker Absolute offer
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AbsOffer {
     /// Order Id
     pub oid: u32,
@@ -48,20 +50,38 @@ pub struct AbsOffer {
     /// CJ Fee maker expects
     #[serde(with = "bitcoin::util::amount::serde::as_sat")]
     pub cjfee: Amount,
+    // This isn't needed for nostr as events are signed
+    pub nick_signature: String,
 }
 
-/// Taker fill maker offer
+/// Taker Fill
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct FillOffer {
+#[serde(rename = "fill")]
+pub struct Fill {
+    #[serde(rename = "oid")]
     pub offer_id: u32,
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
     pub amount: Amount,
+    pub tencpubkey: String,
+    /// Used for Poodle Hash of P2
+    pub commitment: String,
+    // This isn't needed for nostr as events are signed
+    pub nick_signature: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Psbt {
     pub offer_id: u32,
     pub psbt: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename = "tx")]
+pub struct Transaction {
+    /// Transaction hex
+    pub tx: String,
+    // This isn't needed for nostr as events are signed
+    pub nick_signature: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -78,7 +98,7 @@ pub enum Offer {
 // https://serde.rs/enum-representations.html
 pub enum NostrdizerMessages {
     Offer(Offer),
-    FillOffer(FillOffer),
+    Fill(Fill),
     MakerInputs(MakerInput),
     UnsignedCJ(Psbt),
     SignedCJ(Psbt),

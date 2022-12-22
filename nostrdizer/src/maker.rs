@@ -1,7 +1,7 @@
 use crate::{
     errors::Error,
     types::{
-        AbsOffer, BitcoinCoreCreditals, CJFee, FillOffer, MakerInput, NostrdizerMessage,
+        AbsOffer, BitcoinCoreCreditals, CJFee, Fill, MakerInput, NostrdizerMessage,
         NostrdizerMessageKind, NostrdizerMessages, Offer, RelOffer, VerifyCJInfo,
     },
     utils::{self, decrypt_message},
@@ -95,6 +95,8 @@ impl Maker {
             minsize: self.config.minsize,
             maxsize,
             txfee: Amount::ZERO,
+            // TODO:
+            nick_signature: "".to_string(),
         };
 
         let content = serde_json::to_string(&NostrdizerMessage {
@@ -112,6 +114,8 @@ impl Maker {
             minsize: self.config.minsize,
             maxsize,
             txfee: Amount::ZERO,
+            // TODO:
+            nick_signature: "".to_string(),
         };
         let content = serde_json::to_string(&NostrdizerMessage {
             event_type: NostrdizerMessageKind::Offer,
@@ -175,7 +179,7 @@ impl Maker {
     }
 
     /// Maker waits for fill offer
-    pub fn get_fill_offer(&mut self) -> Result<(String, FillOffer), Error> {
+    pub fn get_fill_offer(&mut self) -> Result<(String, Fill), Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
@@ -201,7 +205,7 @@ impl Maker {
                         if event.kind == 20125
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
-                            if let NostrdizerMessages::FillOffer(fill_offer) = decrypt_message(
+                            if let NostrdizerMessages::Fill(fill_offer) = decrypt_message(
                                 &self.identity.secret_key,
                                 &event.pub_key,
                                 &event.content,
@@ -222,7 +226,7 @@ impl Maker {
     }
 
     /// Gets maker input for CJ
-    pub fn get_inputs(&mut self, fill_offer: &FillOffer) -> Result<MakerInput, Error> {
+    pub fn get_inputs(&mut self, fill_offer: &Fill) -> Result<MakerInput, Error> {
         let unspent = self.rpc_client.list_unspent(None, None, None, None, None)?;
         let mut inputs = vec![];
         let mut value: Amount = Amount::ZERO;
@@ -328,7 +332,7 @@ impl Maker {
     /// Maker verify and sign Psbt
     pub fn verify_psbt(
         &mut self,
-        fill_offer: &FillOffer,
+        fill_offer: &Fill,
         unsigned_psbt: &str,
     ) -> Result<VerifyCJInfo, Error> {
         let cj_fee = CJFee {
@@ -353,7 +357,7 @@ impl Maker {
     pub fn send_signed_psbt(
         &mut self,
         peer_pub_key: &str,
-        fill_offer: FillOffer,
+        fill_offer: Fill,
         signed_psbt: &WalletProcessPsbtResult,
     ) -> Result<(), Error> {
         utils::send_signed_psbt(

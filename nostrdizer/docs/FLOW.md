@@ -15,7 +15,7 @@ ephemeral event are used for the coordination of a transaction.
 | ------------- |--------|------------| ------ |
 | Absolute Offer| 10123  | Replaceable| Maker  |
 | Relative Offer| 10124  | Replaceable| Maker  |
-| FillOffer     | 20125  | Ephemeral  | Taker  |
+| Fill          | 20125  | Ephemeral  | Taker  |
 | MakerInput    | 20126  | Ephemeral  | Maker  |
 | UnsignedCJ    | 20127  | Ephemeral  | Taker  |
 | SignedCJ      | 20128  | Ephemeral  | Maker  |
@@ -32,6 +32,7 @@ Contents of an relative offer event:
 - `maxsize` `Amount` The maximum amount CJ a maker will partake in 
 - `txfee` `Amount` The amount the maker will contribute to mining fee 
 - `cjfee` `f64` The percent as a decimal the maker expects 
+- `nick_signature` `String` 
 
 ### Absolute Offer
 
@@ -41,12 +42,17 @@ Contents of an absolute offer event:
 - `maxsize` `Amount` The maximum amount CJ a maker will partake in 
 - `txfee` `Amount` The amount the maker will contribute to mining fee
 - `cjfee` `Amount` The amount the maker expects 
+- `nick_signature` `String` 
 
-## Fill Offer
-Taker sends a `filloffer` to the maker to alert them they would like to use them in a transaction
+
+## Fill
+Taker sends a `fill` to the maker to alert them they would like to use them in a transaction
 Encrypted contents of a `filloffer` event:
 - `offer_id` `u32` of the maker offer they are filling
-- `send_amount` `Amount` the amount of BTC
+- `amount` `Amount` the amount of BTC
+- `tencpubkey` `String` taker pubkey used
+- `commitment` `String` hash of P2
+- `nick_signature` `String` 
 
 ## Maker Input 
 The maker responds to a `filloffer` event with its inputs to be used by the taker to construct the transaction.

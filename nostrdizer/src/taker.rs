@@ -1,9 +1,9 @@
 use crate::{
     errors::Error,
     types::{
-        AbsOffer, BitcoinCoreCreditals, CJFee, FillOffer, MakerInput, MaxMineingFee,
-        NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer, Psbt,
-        RelOffer, VerifyCJInfo,
+        AbsOffer, BitcoinCoreCreditals, CJFee, Fill, MakerInput, MaxMineingFee, NostrdizerMessage,
+        NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer, Psbt, RelOffer,
+        VerifyCJInfo,
     },
     utils::{self, decrypt_message},
 };
@@ -156,9 +156,12 @@ impl Taker {
         for peer in &mut *matching_offers {
             //debug!("Peer: {:?} Offer: {:?}", peer.0, peer.1);
             self.send_fill_offer_message(
-                FillOffer {
+                Fill {
                     offer_id: peer.oid,
                     amount: send_amount,
+                    tencpubkey: "".to_string(),
+                    commitment: "".to_string(),
+                    nick_signature: "".to_string(),
                 },
                 &peer.maker,
             )?;
@@ -240,9 +243,12 @@ impl Taker {
                     for _i in 0..num_failed_to_respond {
                         let peer = &matching_offers[last_peer];
                         self.send_fill_offer_message(
-                            FillOffer {
+                            Fill {
                                 offer_id: peer.oid,
                                 amount: send_amount,
+                                tencpubkey: "".to_string(),
+                                commitment: "".to_string(),
+                                nick_signature: "".to_string(),
                             },
                             &peer.maker,
                         )?;
@@ -386,12 +392,12 @@ impl Taker {
     /// Send fill offer from taker to maker
     pub fn send_fill_offer_message(
         &mut self,
-        fill_offer: FillOffer,
+        fill_offer: Fill,
         peer_pub_key: &str,
     ) -> Result<(), Error> {
         let message = &NostrdizerMessage {
             event_type: NostrdizerMessageKind::FillOffer,
-            event: NostrdizerMessages::FillOffer(fill_offer),
+            event: NostrdizerMessages::Fill(fill_offer),
         };
 
         let encypted_content =
