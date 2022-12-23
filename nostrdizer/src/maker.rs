@@ -8,10 +8,10 @@ use crate::{
 };
 use nostr_rust::{
     events::Event, nostr_client::Client as NostrClient, req::ReqFilter, utils::get_timestamp,
-    Identity,
+    Identity, keys::get_random_secret_key
 };
 
-use bitcoin::Amount;
+pub use bitcoin::Amount;
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::SignRawTransactionResult;
 
@@ -45,12 +45,19 @@ pub struct Maker {
 
 impl Maker {
     pub fn new(
-        priv_key: &str,
+        priv_key: Option<String>,
         relay_urls: Vec<&str>,
         config: &mut Config,
         bitcoin_core_creds: BitcoinCoreCreditals,
     ) -> Result<Self, Error> {
-        let identity = Identity::from_str(priv_key)?;
+        let priv_key = match priv_key {
+            Some(key) => key,
+            None => {
+                let (sk, _) = get_random_secret_key();
+                hex::encode(sk.as_ref())
+            }
+        };
+        let identity = Identity::from_str(&priv_key)?;
 
         let nostr_client = NostrClient::new(relay_urls)?;
 

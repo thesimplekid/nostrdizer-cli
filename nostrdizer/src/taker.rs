@@ -15,7 +15,7 @@ use bitcoincore_rpc_json::{
 };
 use nostr_rust::{
     events::Event, nostr_client::Client as NostrClient, req::ReqFilter, utils::get_timestamp,
-    Identity,
+    Identity, keys::get_random_secret_key
 };
 
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
@@ -38,11 +38,18 @@ pub struct Taker {
 
 impl Taker {
     pub fn new(
-        priv_key: &str,
+        priv_key: Option<String>,
         relay_urls: Vec<&str>,
         bitcoin_core_creds: BitcoinCoreCreditals,
     ) -> Result<Self, Error> {
-        let identity = Identity::from_str(priv_key)?;
+        let priv_key = match priv_key {
+            Some(key) => key,
+            None => {
+                let (sk, _) = get_random_secret_key();
+                hex::encode(sk.as_ref())
+            }
+        };
+        let identity = Identity::from_str(&priv_key)?;
         let nostr_client = NostrClient::new(relay_urls)?;
         let rpc_client = RPCClient::new(
             &bitcoin_core_creds.rpc_url,

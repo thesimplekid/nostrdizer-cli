@@ -1,5 +1,6 @@
-use bitcoin::{Address, Amount, SignedAmount, Txid};
+use bitcoin::{Address, SignedAmount, Txid};
 use serde::{Deserialize, Serialize};
+pub use bitcoin::Amount;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NostrdizerOffer {
