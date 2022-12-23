@@ -235,7 +235,7 @@ fn main() -> Result<()> {
             println!("Waiting for peer inputs...");
 
             // wait for responses from peers
-            // Gets peers psbt inputs
+            // Gets peers tx inputs
             // loops until enough peers have responded
             let peer_inputs =
                 taker.get_peer_inputs(send_amount, number_of_makers, &mut matching_peers)?;
@@ -243,32 +243,28 @@ fn main() -> Result<()> {
 
             let cj = taker.create_cj(send_amount, &peer_inputs)?;
 
-            // Send unsigned psbt to peers
+            // Send unsigned tx to peers
             for (offer, _maker_input) in peer_inputs {
-                taker.send_unsigned_psbt(&offer.maker, offer.oid, &cj)?;
+                taker.send_unsigned_transaction(&offer.maker, &cj)?;
             }
 
             println!("Waiting for peer signatures...");
-            // Wait for signed psbts
-            // Combine signed psbt
-            let peer_signed_psbt = taker.get_signed_peer_psbts(number_of_makers)?;
+            // Wait for signed txs
+            // Combine signed tx
+            let peer_signed_txs = taker.get_signed_peer_transaction(number_of_makers)?;
             println!("Makers have signed transaction, signing ...");
 
-            // Taker Sign psbt
-            if let Ok(psbt_info) = taker.verify_psbt(send_amount, &peer_signed_psbt) {
-                println!(
-                    "Total fee to makers: {} sats.",
-                    psbt_info.maker_fee.to_sat()
-                );
-                println!("Mining fee: {} sats", psbt_info.mining_fee.to_sat());
-                if psbt_info.verifyed {
+            // Taker Sign tx
+            if let Ok(tx_info) = taker.verify_transaction(send_amount, &peer_signed_txs) {
+                println!("Total fee to makers: {} sats.", tx_info.maker_fee.to_sat());
+                println!("Mining fee: {} sats", tx_info.mining_fee.to_sat());
+                if tx_info.verifyed {
                     println!("Transaction passed verification, signing ...");
-                    let signed_psbt = taker.sign_psbt(&peer_signed_psbt)?;
-                    let finalized_psbt = taker.finalize_psbt(&signed_psbt.psbt)?;
+                    let signed_tx = taker.sign_transaction(&peer_signed_txs)?;
                     println!("Finalized transaction, broadcasting ...");
 
-                    // Broadcast signed psbt
-                    let txid = taker.broadcast_transaction(finalized_psbt)?;
+                    // Broadcast signed tx
+                    let txid = taker.broadcast_transaction(signed_tx)?;
                     println!("TXID: {:?}", txid);
                 } else {
                     bail!("Transaction could not be verified")
@@ -369,12 +365,12 @@ fn main() -> Result<()> {
                 maker.send_maker_input(&peer_pubkey, maker_input)?;
                 debug!("Sent Maker Input");
 
-                match maker.get_unsigned_cj_psbt() {
-                    Ok(unsigned_psbt) => {
-                        if let Ok(psbt_info) = maker.verify_psbt(&fill_offer, &unsigned_psbt) {
-                            if psbt_info.verifyed {
-                                let signed_psbt = maker.sign_psbt(&unsigned_psbt)?;
-                                maker.send_signed_psbt(&peer_pubkey, fill_offer, &signed_psbt)?;
+                match maker.get_unsigned_cj_transaction() {
+                    Ok(unsigned_tx) => {
+                        if let Ok(tx_info) = maker.verify_transaction(&fill_offer, &unsigned_tx) {
+                            if tx_info.verifyed {
+                                let signed_tx = maker.sign_tx_hex(&unsigned_tx)?;
+                                maker.send_signed_tx(&peer_pubkey, &signed_tx)?;
                             } else {
                                 warn!("Transaction could not be verified");
                             }

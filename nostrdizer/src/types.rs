@@ -15,7 +15,8 @@ pub struct NostrdizerOffer {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct RelOffer {
     /// Order Id
-    pub oid: u32,
+    #[serde(rename = "oid")]
+    pub offer_id: u32,
     /// Min size of CJ
     /// REVIEW: Double check JM uses sats
     #[serde(with = "bitcoin::util::amount::serde::as_sat")]
@@ -36,7 +37,8 @@ pub struct RelOffer {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AbsOffer {
     /// Order Id
-    pub oid: u32,
+    #[serde(rename = "oid")]
+    pub offer_id: u32,
     /// Min size of CJ
     /// REVIEW: Double check JM uses sats
     #[serde(with = "bitcoin::util::amount::serde::as_sat")]
@@ -102,6 +104,14 @@ pub struct IoAuth {
     pub nick_signature: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename = "sig")]
+pub struct SignedTransaction {
+    #[serde(rename = "sig")]
+    pub tx: Vec<u8>,
+    pub nick_signature: String,
+}
+
 /// Possible messages that can be sent
 #[derive(Serialize, Deserialize, Debug, Clone)]
 // Look at these they may be able to tag better and remove the nostrdizer message type field
@@ -110,14 +120,8 @@ pub enum NostrdizerMessages {
     Offer(Offer),
     Fill(Fill),
     MakerInputs(IoAuth),
-    UnsignedCJ(Psbt),
-    SignedCJ(Psbt),
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Psbt {
-    pub offer_id: u32,
-    pub psbt: String,
+    UnsignedCJ(Transaction),
+    SignedCJ(SignedTransaction),
 }
 
 /// Kinds of `NostrdizerMessages`

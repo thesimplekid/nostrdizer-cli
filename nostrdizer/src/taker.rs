@@ -2,7 +2,8 @@ use crate::{
     errors::Error,
     types::{
         BitcoinCoreCreditals, CJFee, Fill, IoAuth, MaxMineingFee, NostrdizerMessage,
-        NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer, Psbt, VerifyCJInfo,
+        NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer, Transaction,
+        VerifyCJInfo,
     },
     utils::{self, decrypt_message},
 };
@@ -10,7 +11,7 @@ use crate::{
 use bitcoin::{Amount, Denomination};
 
 use bitcoincore_rpc_json::{
-    CreateRawTransactionInput, FinalizePsbtResult, ListUnspentResultEntry, WalletProcessPsbtResult,
+    CreateRawTransactionInput, ListUnspentResultEntry, SignRawTransactionResult,
 };
 use nostr_rust::{
     events::Event, nostr_client::Client as NostrClient, req::ReqFilter, utils::get_timestamp,
@@ -80,8 +81,8 @@ impl Taker {
         utils::get_unspent(&self.rpc_client)
     }
 
-    /// Gets signed peer psbts
-    pub fn get_signed_peer_psbts(&mut self, peer_count: usize) -> Result<String, Error> {
+    /// Gets signed peer tx
+    pub fn get_signed_peer_transaction(&mut self, peer_count: usize) -> Result<String, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
@@ -95,7 +96,7 @@ impl Taker {
 
         let subcription_id = self.nostr_client.subscribe(vec![filter])?;
 
-        let mut peer_signed_psbts = HashMap::new();
+        let mut peer_signed_transaction = HashMap::new();
         loop {
             let data = self.nostr_client.next_data()?;
             for (_, message) in data {
@@ -108,24 +109,26 @@ impl Taker {
                         if event.kind == 20128
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
-                            if let NostrdizerMessages::SignedCJ(signed_psbt) = decrypt_message(
+                            if let NostrdizerMessages::SignedCJ(signed_tx) = decrypt_message(
                                 &self.identity.secret_key,
                                 &event.pub_key,
                                 &event.content,
                             )?
                             .event
                             {
-                                peer_signed_psbts.insert(event.pub_key.to_string(), signed_psbt);
+                                peer_signed_transaction
+                                    .insert(event.pub_key.to_string(), signed_tx);
 
-                                if peer_signed_psbts.len() >= peer_count {
-                                    let psbts: Vec<String> = peer_signed_psbts
+                                if peer_signed_transaction.len() >= peer_count {
+                                    let txs: Vec<String> = peer_signed_transaction
                                         .values()
-                                        .map(|p| p.psbt.clone())
+                                        .map(|p| hex::encode(p.tx.clone()))
                                         .collect();
 
-                                    let combined_psbt = self.rpc_client.combine_psbt(&psbts)?;
+                                    let combined_transaction =
+                                        self.rpc_client.combine_raw_transaction(&txs)?;
 
-                                    return Ok(combined_psbt);
+                                    return Ok(combined_transaction);
                                 }
                             }
                         }
@@ -378,12 +381,12 @@ impl Taker {
 
         debug!("Inputs {:?}", inputs);
         debug!("Outputs: {:?}", outputs);
-        let psbt = self
+        let tx = self
             .rpc_client
-            .create_psbt(&inputs, &outputs, None, None)
+            .create_raw_transaction_hex(&inputs, &outputs, None, None)
             .unwrap();
 
-        Ok(psbt)
+        Ok(tx)
     }
 
     /// Send fill offer from taker to maker
@@ -434,7 +437,7 @@ impl Taker {
             .map(|(k, offer)| match offer {
                 Offer::AbsOffer(offer) => NostrdizerOffer {
                     maker: k,
-                    oid: offer.oid,
+                    oid: offer.offer_id,
                     txfee: offer.txfee,
                     cjfee: offer.cjfee,
                 },
@@ -443,7 +446,7 @@ impl Taker {
                         .floor() as u64;
                     NostrdizerOffer {
                         maker: k,
-                        oid: offer.oid,
+                        oid: offer.offer_id,
                         txfee: offer.txfee,
                         cjfee: Amount::from_sat(cjfee),
                     }
@@ -459,18 +462,17 @@ impl Taker {
         utils::get_offers(&mut self.nostr_client)
     }
 
-    /// Publish unsigned cj psbt to relay
-    pub fn send_unsigned_psbt(
+    /// Publish unsigned cj transaction to relay
+    pub fn send_unsigned_transaction(
         &mut self,
         peer_pub_key: &str,
-        offer_id: u32,
-        psbt: &str,
+        tx_hex: &str,
     ) -> Result<(), Error> {
         let message = NostrdizerMessage {
             event_type: NostrdizerMessageKind::UnsignedCJ,
-            event: NostrdizerMessages::UnsignedCJ(Psbt {
-                offer_id,
-                psbt: psbt.to_string(),
+            event: NostrdizerMessages::UnsignedCJ(Transaction {
+                tx: tx_hex.to_string(),
+                nick_signature: "".to_string(),
             }),
         };
 
@@ -488,15 +490,11 @@ impl Taker {
         Ok(())
     }
 
-    pub fn finalize_psbt(&mut self, psbt: &str) -> Result<FinalizePsbtResult, Error> {
-        Ok(self.rpc_client.finalize_psbt(psbt, None)?)
-    }
-
     /// Verify that taker does not pay more the set fee for CJ
-    pub fn verify_psbt(
+    pub fn verify_transaction(
         &mut self,
         send_amount: Amount,
-        unsigned_psbt: &str,
+        unsigned_tx: &str,
     ) -> Result<VerifyCJInfo, Error> {
         let cj_fee = CJFee {
             abs_fee: self.config.cj_fee.abs_fee,
@@ -508,28 +506,27 @@ impl Taker {
             rel_fee: self.config.mining_fee.rel_fee,
         };
 
-        utils::verify_psbt(
-            unsigned_psbt,
+        utils::verify_transaction(
+            unsigned_tx,
             send_amount,
             utils::Role::Taker(cj_fee, mining_fee),
             &self.rpc_client,
         )
     }
 
-    /// Sign psbt
-    pub fn sign_psbt(&mut self, unsigned_psbt: &str) -> Result<WalletProcessPsbtResult, Error> {
-        utils::sign_psbt(unsigned_psbt, &self.rpc_client)
+    /// Sign tx
+    pub fn sign_transaction(
+        &mut self,
+        unsigned_tx: &str,
+    ) -> Result<SignRawTransactionResult, Error> {
+        utils::sign_tx_hex(unsigned_tx, &self.rpc_client)
     }
 
     /// Broadcast transaction
     pub fn broadcast_transaction(
         &mut self,
-        final_psbt: FinalizePsbtResult,
+        final_hex: SignRawTransactionResult,
     ) -> Result<bitcoin::Txid, Error> {
-        if let Some(final_hex) = final_psbt.hex {
-            Ok(self.rpc_client.send_raw_transaction(&final_hex)?)
-        } else {
-            Err(Error::FailedToBrodcast)
-        }
+        Ok(self.rpc_client.send_raw_transaction(&final_hex.hex)?)
     }
 }

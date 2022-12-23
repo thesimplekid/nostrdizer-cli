@@ -13,7 +13,7 @@ use nostr_rust::{
 
 use bitcoin::Amount;
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
-use bitcoincore_rpc_json::WalletProcessPsbtResult;
+use bitcoincore_rpc_json::SignRawTransactionResult;
 
 use log::debug;
 
@@ -90,7 +90,7 @@ impl Maker {
         }
         // Publish Relative Offer
         let offer = RelOffer {
-            oid: rng.gen(),
+            offer_id: rng.gen(),
             cjfee: self.config.rel_fee,
             minsize: self.config.minsize,
             maxsize,
@@ -109,7 +109,7 @@ impl Maker {
 
         // Publish Absolute Offer
         let offer = AbsOffer {
-            oid: rng.gen(),
+            offer_id: rng.gen(),
             cjfee: self.config.abs_fee,
             minsize: self.config.minsize,
             maxsize,
@@ -285,7 +285,7 @@ impl Maker {
     }
 
     /// Maker waits for unsigned CJ transaction
-    pub fn get_unsigned_cj_psbt(&mut self) -> Result<String, Error> {
+    pub fn get_unsigned_cj_transaction(&mut self) -> Result<String, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
@@ -311,15 +311,16 @@ impl Maker {
                         if event.kind == 20127
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
-                            if let NostrdizerMessages::UnsignedCJ(unsigned_psbt) = decrypt_message(
-                                &self.identity.secret_key,
-                                &event.pub_key,
-                                &event.content,
-                            )?
-                            .event
+                            if let NostrdizerMessages::UnsignedCJ(unsigned_tx_hex) =
+                                decrypt_message(
+                                    &self.identity.secret_key,
+                                    &event.pub_key,
+                                    &event.content,
+                                )?
+                                .event
                             {
                                 self.nostr_client.unsubscribe(&subscription_id)?;
-                                return Ok(unsigned_psbt.psbt);
+                                return Ok(unsigned_tx_hex.tx);
                             }
                         }
                     }
@@ -331,42 +332,43 @@ impl Maker {
         }
     }
 
-    /// Maker verify and sign Psbt
-    pub fn verify_psbt(
+    /// Maker verify and sign tx
+    pub fn verify_transaction(
         &mut self,
         fill_offer: &Fill,
-        unsigned_psbt: &str,
+        unsigned_tx: &str,
     ) -> Result<VerifyCJInfo, Error> {
         let cj_fee = CJFee {
             abs_fee: self.config.abs_fee,
             rel_fee: self.config.rel_fee,
         };
 
-        utils::verify_psbt(
-            unsigned_psbt,
+        utils::verify_transaction(
+            unsigned_tx,
             fill_offer.amount,
             utils::Role::Maker(cj_fee, self.config.minsize, self.config.maxsize),
             &self.rpc_client,
         )
     }
 
-    /// Sign psbt
-    pub fn sign_psbt(&mut self, unsigned_psbt: &str) -> Result<WalletProcessPsbtResult, Error> {
-        utils::sign_psbt(unsigned_psbt, &self.rpc_client)
+    /// Sign tx hex
+    pub fn sign_tx_hex(
+        &mut self,
+        unsigned_tx_hex: &str,
+    ) -> Result<SignRawTransactionResult, Error> {
+        utils::sign_tx_hex(unsigned_tx_hex, &self.rpc_client)
     }
 
-    /// Send signed psbt back to taker
-    pub fn send_signed_psbt(
+    /// Send signed tx back to taker
+    pub fn send_signed_tx(
         &mut self,
         peer_pub_key: &str,
-        fill_offer: Fill,
-        signed_psbt: &WalletProcessPsbtResult,
+        signed_tx: &SignRawTransactionResult,
     ) -> Result<(), Error> {
-        utils::send_signed_psbt(
+        utils::send_signed_tx(
             &self.identity,
             peer_pub_key,
-            fill_offer.offer_id,
-            signed_psbt.clone(),
+            signed_tx.clone(),
             &mut self.nostr_client,
         )?;
         Ok(())

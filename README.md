@@ -15,8 +15,6 @@ To incentivize running a maker the taker pays a small fee to the maker for their
 An Overview of the order [flow](./nostrdizer/docs/FLOW.md).
 
 ## Getting started
-Currently Bitcoin Core 23 is required as the core RPC api [changed](https://github.com/rust-bitcoin/rust-bitcoincore-rpc/issues/260) between 22 and 23, hopefully I can figure out a way to handle this and older versions will be supported. The end goal will be to remove the requirement to use core at all, and users can choose what backend they want to use for their blockdata and wallet, but support for this will take some time.  
-
 
 ### Run Maker 
 ```
@@ -42,20 +40,24 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
     - [ ] New key with proof of work
 - [x] Maker republish offer if taker doesn't not respond 
 - [ ] Taker should handle makers not responding 
+    (These both work sorta, it gets stuck in the loop waiting for events
+    since the ephemeral events are not there, async might help with this.)
     - [x] At input collection
     - [ ] At signing
+- [ ] use [nip-40](https://github.com/nostr-protocol/nips/blob/master/40.md) expiring events for offers
 - [ ] Events should be verified (add this fn to `nostr_rust`)
 - [ ] Taker griefing [#1](https://github.com/thesimplekid/nostrdizer-cli/issues/1)
-- [ ] When maker sends inputs should sign message to prove ownership
-- [ ] Select maker to broadcast transaction (maybe maker doesnt even need to be one of the ones in CJ)
 - [ ] Fidelity Bond (it'll be a bit)
 - [ ] Cleanup and add tests
 - [ ] Add print outs 
 - [ ] Add Docs
 
 ### A Note on Forks
-My fork of [rust-bitcoin-rpc](https://github.com/rust-bitcoin/rust-bitcoincore-rpc) is required as the decode psbt function is not merged upstream. 
+My fork of [rust-bitcoin-rpc](https://github.com/rust-bitcoin/rust-bitcoincore-rpc) is required as the decode transaction function is not merged upstream. 
 I do intend to clean this up and create a PR to merge upstream as I would rather not depend on forks. 
+
+### Bitcoin Core
+Bitcoin core is requited, v23 and v22 have been tested. Other versions may work but have not been tested. 
 
 ## License
 Code is under the BSD 3-Clause License ([LICENSE](LICENSE) or [https://opensource.org/licenses/BSD-3-Clause](https://opensource.org/licenses/BSD-3-Clause))  
