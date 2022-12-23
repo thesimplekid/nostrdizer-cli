@@ -94,12 +94,13 @@ impl From<bitcoin::secp256k1::Error> for Error {
         Self::BitcoinSecpError(err)
     }
 }
-
+/*
 impl From<secp256k1::Error> for Error {
     fn from(err: secp256k1::Error) -> Self {
         Self::Secp256k1Error(err)
     }
 }
+*/
 
 impl From<std::string::String> for Error {
     fn from(err: std::string::String) -> Self {
