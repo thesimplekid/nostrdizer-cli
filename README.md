@@ -32,6 +32,9 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 - [ ] No coin control to prevent mixing change and CJ 
     - [ ] Maker does not verify that CJ outputs are sent to correct send vs change address
 ### Todo
+- [ ] Update nostr_rust version
+    - [ ] Events should be verified
+- [ ] Cleanup, add tests, and COMMENTS
 - [x] Use Replaceable events for offers
 - [x] Delete events when cj completed
     - [x] Use ephemeral events for messages
@@ -39,20 +42,21 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 - [x] Maker should republish offer after completed Coinjoins
     - [ ] New key with proof of work?
 - [x] Maker republish offer if taker doesn't not respond 
-- [ ] use [nip-40](https://github.com/nostr-protocol/nips/blob/master/40.md) expiring events for offers
-- [ ] Events should be verified
 - [ ] Taker griefing [#1](https://github.com/thesimplekid/nostrdizer-cli/issues/1)
     - [x] Taker generates and sends Podle commitment
     - [x] Maker validates poodle commitment
     - [ ] Maker stores lists of used commits and checks it was not used before (this is what makes it useful)
+- [ ] Work out how to make interoperable with JM as a taker.
+    - [ ] Serialization of messages 
+    - [ ] Many more ...
+- [ ] use [nip-40](https://github.com/nostr-protocol/nips/blob/master/40.md) expiring events for offers
 - [ ] Fidelity Bond (it'll be a bit)
-- [ ] Cleanup and add tests
 - [ ] Add print outs 
 - [ ] Add Docs
 
 ### A Note on Forks
 My fork of [rust-bitcoin-rpc](https://github.com/rust-bitcoin/rust-bitcoincore-rpc) is required as the decode transaction function is not merged upstream. 
-I do intend to clean this up and create a PR to merge upstream as I would rather not depend on forks. 
+I do intend to clean this up and create a PR to merge upstream as I would rather not depend on forks [https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/271](https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/271). 
 
 ### Bitcoin Core
 Bitcoin core is requited, v23 and v22 have been tested. Other versions may work but have not been tested. 
