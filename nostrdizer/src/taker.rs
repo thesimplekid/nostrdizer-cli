@@ -296,7 +296,14 @@ impl Taker {
 
     /// Taker generate podle
     pub fn generate_podle(&self) -> Result<AuthCommitment, Error> {
-        podle::generate_podle(0, &self.rpc_client)
+        // TODO: Get address somewhere else
+        let unspent = self.rpc_client.list_unspent(None, None, None, None, None)?;
+        let address = unspent[0].clone().address.unwrap();
+
+        let priv_key = self.rpc_client.dump_private_key(&address)?;
+        // let priv_key = PrivateKey::from_slice( b"\xf00\x1aD3R\xba\xa9&\xce$\xe3\xf6,\xf3j\xden\x87\x85\xee\xe8\xd4c\xd4C\x80\x1f\x81\x02j\xe9", bitcoin::Network::Regtest).unwrap();
+
+        podle::generate_podle(0, priv_key)
     }
 
     /// Creates CJ transaction

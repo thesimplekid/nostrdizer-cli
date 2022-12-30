@@ -1,11 +1,12 @@
+use std::str::FromStr;
+
 use crate::errors::Error;
 use crate::types::AuthCommitment;
-
-use bitcoincore_rpc::{Client as RPCClient, RpcApi};
 
 use num_bigint::BigInt;
 
 use bitcoin::consensus::Decodable;
+use bitcoin::PrivateKey;
 use bitcoin_hashes::{sha256, Hash};
 use secp256k1::{PublicKey, Scalar, Secp256k1, SecretKey};
 
@@ -24,7 +25,9 @@ fn get_p2(priv_key: SecretKey, nums_key: PublicKey) -> PublicKey {
         .mul_tweak(&ctx, &Scalar::from_be_bytes(*priv_raw).unwrap())
         .unwrap()
 }
-fn vec_to_int(vec: &[u8]) -> BigInt {
+
+/// Decodes Vec<u8> to BigInt
+fn decode(vec: &[u8]) -> BigInt {
     let mut int: BigInt = BigInt::from(0);
     for char in vec {
         int *= 256;
@@ -33,6 +36,7 @@ fn vec_to_int(vec: &[u8]) -> BigInt {
     int
 }
 
+/// Encode a BigInt as a Vec<u8>
 fn encode(val: BigInt) -> Vec<u8> {
     let mut result = vec![];
     let mut val = val;
@@ -44,37 +48,42 @@ fn encode(val: BigInt) -> Vec<u8> {
     result
 }
 
+/// Modulo
 fn modulo(a: &BigInt, b: &BigInt) -> BigInt {
     ((a % b) + b) % b
 }
 
 /// Generate podle commitment
-pub fn generate_podle(index: u8, rpc_client: &RPCClient) -> Result<AuthCommitment, Error> {
-    // TODO: Get address somewhere else
-    let unspent = rpc_client.list_unspent(None, None, None, None, None)?;
-    let address = unspent[0].clone().address.unwrap();
-
-    let priv_key = rpc_client.dump_private_key(&address)?;
-    // let priv_key = PrivateKey::from_slice( b"\xf00\x1aD3R\xba\xa9&\xce$\xe3\xf6,\xf3j\xden\x87\x85\xee\xe8\xd4c\xd4C\x80\x1f\x81\x02j\xe9", bitcoin::Network::Regtest).unwrap();
+/// ```
+/// use bitcoin::PrivateKey;
+/// use nostrdizer::podle::{generate_podle, verify_podle};
+///
+/// let priv_key = PrivateKey::from_slice( b"\xf00\x1aD3R\xba\xa9&\xce$\xe3\xf6,\xf3j\xden\x87\x85\xee\xe8\xd4c\xd4C\x80\x1f\x81\x02j\xe9", bitcoin::Network::Regtest).unwrap();
+/// let result = generate_podle(0, priv_key).unwrap();
+///
+/// assert_eq!(result.p.serialize(), [2, 30, 229, 220, 10, 194, 200, 105, 195, 110, 225, 178, 244, 49, 52, 230, 190, 215, 102, 72, 155, 101, 23, 157, 93, 141, 120, 51, 3, 66, 151, 108, 172]);
+/// assert_eq!(result.p2.serialize(), [3, 244, 231, 197, 180, 185, 249, 244, 106, 38, 41, 229, 149, 221, 9, 249, 222, 147, 89, 33, 173, 206, 237, 228, 134, 107, 138, 213, 252, 51, 51, 243, 147]);
+///    // let k =  Scalar::from_be_bytes(*b"\x8d\xe6\xc8-\xc63EYf\xdf\x18\xe7d\xb4\xf9k\xbc\xd6z5\xef\\\xdfvI\xc5\x1b\x07\x87\x91\xcc\x89").unwrap();
+/// verify_podle(0, result.clone(), result.commit).unwrap();
+/// ```
+pub fn generate_podle(index: usize, priv_key: PrivateKey) -> Result<AuthCommitment, Error> {
     let ctx = Secp256k1::new();
     // P
     let pub_key = priv_key.public_key(&ctx).inner;
     //debug!("g P: {:?}", pub_key);
     // k
-    // let k =  Scalar::from_be_bytes(*b"\x8d\xe6\xc8-\xc63EYf\xdf\x18\xe7d\xb4\xf9k\xbc\xd6z5\xef\\\xdfvI\xc5\x1b\x07\x87\x91\xcc\x89").unwrap(); // Scalar::random();
     let k = Scalar::random();
     // KG
     let kg = SecretKey::from_slice(&k.to_be_bytes())
         .unwrap()
         .public_key(&ctx);
 
-    let j = get_nums(index)?;
+    let j = PublicKey::from_str(PRECOMPUTEDNUMS[index])?;
     // KJ
     let kj = j.mul_tweak(&ctx, &k)?;
 
     // P2
     let p2 = get_p2(priv_key.inner, j);
-    //debug!("g P2 {}", p2);
 
     let commitment = sha256::Hash::hash(&p2.serialize());
     // e
@@ -87,13 +96,13 @@ pub fn generate_podle(index: u8, rpc_client: &RPCClient) -> Result<AuthCommitmen
     .concat();
     let e = sha256::Hash::hash(&arrays);
 
-    let priv_int = vec_to_int(&priv_key.to_bytes());
+    let priv_int = decode(&priv_key.to_bytes());
 
     let k_int = k.to_be_bytes();
-    let k_int = vec_to_int(&k_int);
+    let k_int = decode(&k_int);
 
     let e_int = e.into_inner();
-    let e_int = vec_to_int(e_int.as_ref());
+    let e_int = decode(e_int.as_ref());
 
     let sig_int = (k_int + priv_int * e_int) % &n();
     let sig = sig_int.to_bytes_be().1;
@@ -109,6 +118,17 @@ pub fn generate_podle(index: u8, rpc_client: &RPCClient) -> Result<AuthCommitmen
     Ok(result)
 }
 
+/// Verify a podle commitment
+/// ```
+/// use nostrdizer::podle::{generate_podle, verify_podle};
+/// use bitcoin::PrivateKey;
+/// // Not really a great test as it assumes generate is correct
+/// let priv_key = PrivateKey::from_slice( b"\xf00\x1aD3R\xba\xa9&\xce$\xe3\xf6,\xf3j\xden\x87\x85\xee\xe8\xd4c\xd4C\x80\x1f\x81\x02j\xe9", bitcoin::Network::Regtest).unwrap();
+/// let auth = generate_podle(0, priv_key).unwrap();
+///
+/// verify_podle(0, auth.clone(), auth.commit);
+///
+/// ```
 pub fn verify_podle(
     index: u8,
     auth_commitment: AuthCommitment,
@@ -145,7 +165,7 @@ pub fn verify_podle(
             &mut e.into_inner().as_ref(),
         )
         .unwrap();
-        let e_int = vec_to_int(e_int.as_ref());
+        let e_int = decode(e_int.as_ref());
         // REVIEW:
         let e_neg = modulo(&-e_int, &n());
         let e_neg = encode(e_neg).try_into().unwrap();
@@ -190,19 +210,8 @@ fn get_g(compressed: bool) -> Vec<u8> {
     }
 }
 
-/// ```
-/// use nostrdizer::{podle::{self, PRECOMPUTEDNUMS}};
-/// use secp256k1::PublicKey;
-/// use std::str::FromStr;
-///
-/// let mut nums = vec![];
-/// for i in 0..=255 {
-///     nums.push(podle::get_nums(i).unwrap().to_string());
-/// }
-///
-/// assert_eq!(nums.as_slice(), PRECOMPUTEDNUMS)
-/// ```
-pub fn get_nums(index: u8) -> Result<PublicKey, Error> {
+/// Get nums
+fn get_nums(index: u8) -> Result<PublicKey, Error> {
     for &compressed in &[true, false] {
         let mut seed = get_g(compressed);
         seed.extend_from_slice(&[index]);
@@ -479,3 +488,79 @@ pub const PRECOMPUTEDNUMS: [&str; 256] = [
     "023a0d381598e185bbff88494dc54e0a083d3b9ce9c8c4b86b5a4c9d5f949b1828",
     "02a0a8694820c794852110e5939a2c03f8482f81ed57396042c6b34557f6eb430a",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_modulo() {
+        let a = "-22194981318972513906404150772491931704704772619352044137778275718648945750476"
+            .parse()
+            .unwrap();
+        let b = n();
+
+        let m = modulo(&a, &b);
+
+        assert_eq!(
+            m,
+            "93597107918343681517166834236195976148132791659722860244826887422869215743861"
+                .parse()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_decode() {
+        let v = [
+            141, 230, 200, 45, 198, 51, 69, 89, 102, 223, 24, 231, 100, 180, 249, 107, 188, 214,
+            122, 53, 239, 92, 223, 118, 73, 197, 27, 7, 135, 145, 204, 137,
+        ];
+
+        let result = decode(&v);
+
+        let r: BigInt =
+            "64183868058479472664368820583086059908285866182535387296062357430386065263753"
+                .parse()
+                .unwrap();
+
+        assert_eq!(result, r);
+    }
+
+    #[test]
+    fn test_encode() {
+        let v = "98904036365135577215743764907591587298480678091079165657051126266420213344278"
+            .parse()
+            .unwrap();
+
+        let e = encode(v);
+
+        let result = vec![
+            22, 104, 108, 178, 243, 102, 30, 118, 72, 225, 0, 161, 104, 24, 97, 0, 231, 164, 103,
+            57, 134, 125, 113, 118, 202, 79, 60, 34, 104, 179, 169, 218,
+        ];
+
+        assert_eq!(e, result);
+    }
+
+    #[test]
+    fn test_get_nums() {
+        let mut nums = vec![];
+        for i in 0..=255 {
+            nums.push(get_nums(i).unwrap().to_string());
+        }
+        assert_eq!(nums.as_slice(), PRECOMPUTEDNUMS)
+    }
+
+    #[test]
+    fn test_get_p2() {
+        let priv_key = PrivateKey::from_slice( b"\xf00\x1aD3R\xba\xa9&\xce$\xe3\xf6,\xf3j\xden\x87\x85\xee\xe8\xd4c\xd4C\x80\x1f\x81\x02j\xe9", bitcoin::Network::Regtest).unwrap();
+        let j = PublicKey::from_str(PRECOMPUTEDNUMS[0]).unwrap();
+        let p2 = get_p2(priv_key.inner, j);
+
+        assert_eq!(
+            p2.to_string(),
+            "03f4e7c5b4b9f9f46a2629e595dd09f9de935921adceede4866b8ad5fc3333f393".to_string()
+        );
+    }
+}
