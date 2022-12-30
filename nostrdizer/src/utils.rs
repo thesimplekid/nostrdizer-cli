@@ -72,7 +72,7 @@ pub fn send_signed_tx(
     let encrypt_message = encrypt_message(&identity.secret_key, peer_pub_key, &event)?;
     nostr_client.publish_ephemeral_event(
         identity,
-        128,
+        130,
         &encrypt_message,
         &[vec!["p".to_string(), peer_pub_key.to_string()]],
         0,

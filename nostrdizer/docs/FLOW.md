@@ -16,9 +16,11 @@ ephemeral event are used for the coordination of a transaction.
 | Absolute Offer      | 10123  | Replaceable| Maker  |
 | Relative Offer      | 10124  | Replaceable| Maker  |
 | Fill                | 20125  | Ephemeral  | Taker  |
-| IoAuth              | 20126  | Ephemeral  | Maker  |
-| Transaction         | 20127  | Ephemeral  | Taker  |
-| SignedTransaction   | 20128  | Ephemeral  | Maker  |
+| Pubkey              | 20126  | Ephemeral  | Maker  |
+| Auth                | 20127  | Ephermeral | Taker  |
+| IoAuth              | 20128  | Ephemeral  | Maker  |
+| Transaction         | 20129  | Ephemeral  | Taker  |
+| SignedTransaction   | 20130  | Ephemeral  | Maker  |
 
 
 ## Offer 
@@ -49,11 +51,24 @@ Encrypted contents of a `fill` event:
 - `offer_id` `u32` of the maker offer they are filling
 - `amount` `Amount` the amount of BTC
 - `tencpubkey` `String` taker pubkey used
-- `commitment` `String` hash of P2
+- `commitment` `sha256::Hash` hash of P2
 - `nick_signature` `String` 
 ---
 
-## Io Auth 
+## Pubkey 
+- `mencpubkey` `String`
+- `nick_signature` `String` 
+---
+
+## Auth
+- `p` `Publickey`
+- `p2` `Publickey`
+- `commit` `sha256::Hash` of p2
+- `sig` `Vec<u8>`
+- `e` `sha256::Hash`
+--- 
+
+### Io Auth 
 The maker responds to a `filloffer` event with its inputs to be used by the taker to construct the transaction.
 Encrypted content of the `IoAuth` event:
 - `utxos` `Vec<(Txid, vout)>`

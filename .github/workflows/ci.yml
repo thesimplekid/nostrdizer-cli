@@ -5,8 +5,6 @@ on:
   pull_request_target:
   workflow_call:
   push:
-    branches:
-      - main
 jobs:
   style:
     name: Check Style

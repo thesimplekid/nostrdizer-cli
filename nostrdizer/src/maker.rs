@@ -1,14 +1,16 @@
 use crate::{
     errors::Error,
+    podle,
     types::{
-        AbsOffer, BitcoinCoreCreditals, CJFee, Fill, IoAuth, NostrdizerMessage,
-        NostrdizerMessageKind, NostrdizerMessages, Offer, RelOffer, VerifyCJInfo,
+        AbsOffer, AuthCommitment, BitcoinCoreCreditals, CJFee, Fill, IoAuth, NostrdizerMessage,
+        NostrdizerMessageKind, NostrdizerMessages, Offer, Pubkey, RelOffer, VerifyCJInfo,
     },
     utils::{self, decrypt_message},
 };
+use bitcoin_hashes::sha256;
 use nostr_rust::{
-    events::Event, nostr_client::Client as NostrClient, req::ReqFilter, utils::get_timestamp,
-    Identity, keys::get_random_secret_key
+    events::Event, keys::get_random_secret_key, nostr_client::Client as NostrClient,
+    req::ReqFilter, utils::get_timestamp, Identity,
 };
 
 pub use bitcoin::Amount;
@@ -41,6 +43,7 @@ pub struct Maker {
     config: Config,
     nostr_client: NostrClient,
     rpc_client: RPCClient,
+    fill_commitment: Option<sha256::Hash>,
 }
 
 impl Maker {
@@ -79,6 +82,7 @@ impl Maker {
             config: config.clone(),
             nostr_client,
             rpc_client,
+            fill_commitment: None,
         };
         Ok(maker)
     }
@@ -219,6 +223,8 @@ impl Maker {
                             )?
                             .event
                             {
+                                // TODO: Verify commitment in fill offer
+                                self.fill_commitment = Some(fill_offer.commitment);
                                 return Ok((event.pub_key, fill_offer));
                             }
                         }
@@ -266,33 +272,7 @@ impl Maker {
         Ok(maker_input)
     }
 
-    /// Send maker input
-    pub fn send_maker_input(
-        &mut self,
-        peer_pub_key: &str,
-        maker_input: IoAuth,
-    ) -> Result<(), Error> {
-        let message = NostrdizerMessage {
-            event_type: NostrdizerMessageKind::MakerPsbt,
-            event: NostrdizerMessages::MakerInputs(maker_input),
-        };
-
-        let encypted_content =
-            utils::encrypt_message(&self.identity.secret_key, peer_pub_key, &message)?;
-
-        self.nostr_client.publish_ephemeral_event(
-            &self.identity,
-            126,
-            &encypted_content,
-            &[vec!["p".to_string(), peer_pub_key.to_string()]],
-            0,
-        )?;
-
-        Ok(())
-    }
-
-    /// Maker waits for unsigned CJ transaction
-    pub fn get_unsigned_cj_transaction(&mut self) -> Result<String, Error> {
+    pub fn get_commitment_auth(&mut self) -> Result<AuthCommitment, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
@@ -316,6 +296,108 @@ impl Maker {
                     }
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
                         if event.kind == 20127
+                            && event.tags[0].contains(&self.identity.public_key_str)
+                        {
+                            if let NostrdizerMessages::Auth(auth_commitment) = decrypt_message(
+                                &self.identity.secret_key,
+                                &event.pub_key,
+                                &event.content,
+                            )?
+                            .event
+                            {
+                                self.nostr_client.unsubscribe(&subscription_id)?;
+                                return Ok(auth_commitment);
+                            }
+                        }
+                    }
+                }
+            }
+            if started_waiting.gt(&(started_waiting + 300)) {
+                return Err(Error::TakerFailedToSendTransaction);
+            }
+        }
+    }
+
+    /// Maker verify podle
+    pub fn verify_podle(&self, auth_commitment: AuthCommitment) -> Result<(), Error> {
+        podle::verify_podle(0, auth_commitment, self.fill_commitment.unwrap())
+    }
+
+    /// Send maker input
+    pub fn send_maker_input(
+        &mut self,
+        peer_pub_key: &str,
+        maker_input: IoAuth,
+    ) -> Result<(), Error> {
+        let message = NostrdizerMessage {
+            event_type: NostrdizerMessageKind::MakerPsbt,
+            event: NostrdizerMessages::MakerInputs(maker_input),
+        };
+
+        let encypted_content =
+            utils::encrypt_message(&self.identity.secret_key, peer_pub_key, &message)?;
+
+        self.nostr_client.publish_ephemeral_event(
+            &self.identity,
+            128,
+            &encypted_content,
+            &[vec!["p".to_string(), peer_pub_key.to_string()]],
+            0,
+        )?;
+
+        Ok(())
+    }
+
+    /// Send pubkey message
+    /// This is a dumby message for now
+    pub fn send_pubkey(&mut self, peer_pub_key: &str) -> Result<(), Error> {
+        let message = NostrdizerMessage {
+            event_type: NostrdizerMessageKind::MakerPubkey,
+            event: NostrdizerMessages::PubKey(Pubkey {
+                mencpubkey: "".to_string(),
+                nick_signature: "".to_string(),
+            }),
+        };
+
+        let encrypted_content =
+            utils::encrypt_message(&self.identity.secret_key, peer_pub_key, &message)?;
+
+        self.nostr_client.publish_ephemeral_event(
+            &self.identity,
+            126,
+            &encrypted_content,
+            &[vec!["p".to_string(), peer_pub_key.to_string()]],
+            0,
+        )?;
+
+        Ok(())
+    }
+
+    /// Maker waits for unsigned CJ transaction
+    pub fn get_unsigned_cj_transaction(&mut self) -> Result<String, Error> {
+        let filter = ReqFilter {
+            ids: None,
+            authors: None,
+            kinds: Some(vec![20129]),
+            e: None,
+            p: Some(vec![self.identity.public_key_str.clone()]),
+            since: None,
+            until: None,
+            limit: None,
+        };
+
+        let subscription_id = self.nostr_client.subscribe(vec![filter])?;
+
+        let started_waiting = get_timestamp();
+        loop {
+            let data = self.nostr_client.next_data()?;
+            for (_, message) in data {
+                if let Ok(event) = serde_json::from_str::<Value>(&message.to_string()) {
+                    if event[0] == "EOSE" && event[1].as_str() == Some(&subscription_id) {
+                        break;
+                    }
+                    if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
+                        if event.kind == 20129
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::UnsignedCJ(unsigned_tx_hex) =
