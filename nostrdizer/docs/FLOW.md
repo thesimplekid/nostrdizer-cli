@@ -17,7 +17,7 @@ ephemeral event are used for the coordination of a transaction.
 | Relative Offer      | 10124  | Replaceable| Maker  |
 | Fill                | 20125  | Ephemeral  | Taker  |
 | Pubkey              | 20126  | Ephemeral  | Maker  |
-| Auth                | 20127  | Ephermeral | Taker  |
+| Auth                | 20127  | Ephemeral  | Taker  |
 | IoAuth              | 20128  | Ephemeral  | Maker  |
 | Transaction         | 20129  | Ephemeral  | Taker  |
 | SignedTransaction   | 20130  | Ephemeral  | Maker  |
@@ -68,8 +68,7 @@ Encrypted contents of a `fill` event:
 - `e` `sha256::Hash`
 --- 
 
-### Io Auth 
-The maker responds to a `filloffer` event with its inputs to be used by the taker to construct the transaction.
+## Io Auth 
 Encrypted content of the `IoAuth` event:
 - `utxos` `Vec<(Txid, vout)>`
 - `maker_auth_pub` `String`
@@ -82,14 +81,14 @@ Encrypted content of the `IoAuth` event:
 ## Transaction
 The taker constructs the transaction and sends to makers.
 Encrypted contents of the `Transaction` event:
-- `tx` `String` of raw transaction hex
+- `tx` `String` raw transaction hex
 - `nick_signature` `String`
 ---
 
 ## SignedTransaction
 Maker verifies the CJ transactions and signs responding with the signed transaction
 Encrypted contents of `SignedTransaction` event:
-- `tx` `String` of raw transaction hex
+- `tx` `String` raw transaction hex
 - `nick_signature` `String`
 
 

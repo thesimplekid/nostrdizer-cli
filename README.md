@@ -33,6 +33,7 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
     - [ ] Maker does not verify that CJ outputs are sent to correct send vs change address
 ### Todo
 - [ ] Update nostr_rust version
+    Nostr_rust greater then 14 uses a newer version of secp256k1 that causes compatibility issues with version used in rust_bitcoin, should be fixed in next release of rust_bitcoin.
     - [ ] Events should be verified
 - [ ] Cleanup, add tests, and COMMENTS
 - [x] Use Replaceable events for offers
@@ -49,14 +50,16 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 - [ ] Work out how to make interoperable with JM as a taker.
     - [ ] Serialization of messages 
     - [ ] Many more ...
-- [ ] use [nip-40](https://github.com/nostr-protocol/nips/blob/master/40.md) expiring events for offers
+- [ ] Use [nip-40](https://github.com/nostr-protocol/nips/blob/master/40.md) expiring events for offers
 - [ ] Fidelity Bond (it'll be a bit)
 - [ ] Add print outs 
 - [ ] Add Docs
 
 ### A Note on Forks
-My fork of [rust-bitcoin-rpc](https://github.com/rust-bitcoin/rust-bitcoincore-rpc) is required as the decode transaction function is not merged upstream. 
-I do intend to clean this up and create a PR to merge upstream as I would rather not depend on forks [https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/271](https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/271). 
+My fork of [rust-bitcoin-rpc](https://github.com/rust-bitcoin/rust-bitcoincore-rpc) is required as a few functions are not merged upstream. 
+I do intend to clean this up and create a PR to merge upstream as I would rather not depend on forks 
+- [x] [decode transaction](https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/271). 
+- [ ] [Get Change Address](https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/261)
 
 ### Bitcoin Core
 Bitcoin core is requited, v23 and v22 have been tested. Other versions may work but have not been tested. 
