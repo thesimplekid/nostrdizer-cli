@@ -1,13 +1,8 @@
 pub use bitcoin::Amount;
 use bitcoin::{Address, SignedAmount, Txid};
 use bitcoin_hashes::sha256::Hash;
-use bitcoincore_rpc::Client as RPCClient;
 use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
-
-use bitcoin_hashes::sha256;
-
-use nostr_rust::{nostr_client::Client as NostrClient, Identity};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NostrdizerOffer {
@@ -157,14 +152,6 @@ pub struct NostrdizerMessage {
     pub event: NostrdizerMessages,
 }
 
-#[cfg(feature = "bitcoincore")]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BitcoinCoreCreditals {
-    pub rpc_url: String,
-    pub rpc_username: String,
-    pub rpc_password: String,
-}
-
 /// Final CJ transaction info
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VerifyCJInfo {
@@ -209,15 +196,6 @@ pub struct AuthCommitment {
     pub e: Hash,
 }
 
-#[cfg(feature = "bitcoincore")]
-pub struct Maker {
-    pub identity: Identity,
-    pub config: MakerConfig,
-    pub nostr_client: NostrClient,
-    pub rpc_client: RPCClient,
-    pub fill_commitment: Option<sha256::Hash>,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MakerConfig {
     #[serde(with = "bitcoin::util::amount::serde::as_btc")]
@@ -234,17 +212,4 @@ pub struct TakerConfig {
     pub cj_fee: CJFee,
     pub mining_fee: MaxMineingFee,
     pub minium_makers: usize,
-}
-
-#[cfg(feature = "bitcoincore")]
-pub struct Taker {
-    pub identity: Identity,
-    pub config: TakerConfig,
-    pub nostr_client: NostrClient,
-    pub rpc_client: RPCClient,
-}
-
-pub enum Role {
-    Maker(CJFee, Amount, Option<Amount>),
-    Taker(CJFee, MaxMineingFee),
 }

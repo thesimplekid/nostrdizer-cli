@@ -5,9 +5,10 @@ use std::{env, panic};
 
 use log::{debug, error, warn, LevelFilter};
 use nostrdizer::{
+    bitcoincore::{maker::Maker, taker::Taker, types::BitcoinCoreCreditals},
     errors::Error as NostrdizerError,
     podle::verify_podle,
-    types::{Amount, BitcoinCoreCreditals, Maker, MakerConfig, Taker},
+    types::{Amount, MakerConfig},
 };
 
 use serde::{Deserialize, Serialize};
@@ -286,7 +287,7 @@ fn main() -> Result<()> {
             println!("Makers have signed transaction, signing ...");
 
             // Taker Sign tx
-            if let Ok(tx_info) = taker.verify_transaction(send_amount, &peer_signed_txs) {
+            if let Ok(tx_info) = taker.verify_transaction(&peer_signed_txs, &send_amount) {
                 println!("Total fee to makers: {} sats.", tx_info.maker_fee.to_sat());
                 println!("Mining fee: {} sats", tx_info.mining_fee.to_sat());
                 if tx_info.verifyed {
@@ -408,7 +409,9 @@ fn main() -> Result<()> {
                 // Step 6: Receives Transaction Hex (!tx)
                 match maker.get_unsigned_cj_transaction() {
                     Ok(unsigned_tx) => {
-                        if let Ok(tx_info) = maker.verify_transaction(&fill_offer, &unsigned_tx) {
+                        if let Ok(tx_info) =
+                            maker.verify_transaction(&unsigned_tx, &fill_offer.amount)
+                        {
                             if tx_info.verifyed {
                                 // Step 7: Signs and sends transaction to taker if verified (!sig)
                                 let signed_tx = maker.sign_tx_hex(&unsigned_tx)?;

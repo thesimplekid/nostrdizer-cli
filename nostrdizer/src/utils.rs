@@ -1,11 +1,7 @@
 use crate::errors::Error;
 use crate::types::{
-    NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Offer, Role, SignedTransaction,
-    VerifyCJInfo,
+    NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Offer, SignedTransaction,
 };
-use bitcoin::Amount;
-use bitcoincore_rpc::Client as RPCClient;
-use bitcoincore_rpc_json::SignRawTransactionResult;
 
 use nostr_rust::{
     nips::nip4::{decrypt, encrypt},
@@ -47,12 +43,12 @@ pub fn get_offers(nostr_client: &mut NostrClient) -> Result<Vec<(String, Offer)>
 pub fn send_signed_tx(
     identity: &Identity,
     peer_pub_key: &str,
-    tx: SignRawTransactionResult,
+    tx: &[u8],
     nostr_client: &mut NostrClient,
 ) -> Result<(), Error> {
     let event = NostrdizerMessage {
         event_type: NostrdizerMessageKind::SignedCJ,
-        event: NostrdizerMessages::SignedCJ(SignedTransaction { tx: tx.hex }),
+        event: NostrdizerMessages::SignedCJ(SignedTransaction { tx: tx.to_vec() }),
     };
 
     let encrypt_message = encrypt_message(&identity.secret_key, peer_pub_key, &event)?;
@@ -83,19 +79,4 @@ pub fn decrypt_message(
 ) -> Result<NostrdizerMessage, Error> {
     let x = XOnlyPublicKey::from_str(pk)?;
     Ok(serde_json::from_str(&decrypt(sk, &x, message)?)?)
-}
-
-#[cfg(feature = "bitcoincore")]
-pub fn get_eligible_balance(rpc_client: &RPCClient) -> Result<Amount, Error> {
-    crate::bitcoincore::utils::get_eligible_balance(rpc_client)
-}
-
-#[cfg(feature = "bitcoincore")]
-pub fn verify_transaction(
-    unsigned_tx: &str,
-    send_amount: Amount,
-    role: Role,
-    rpc_client: &RPCClient,
-) -> Result<VerifyCJInfo, Error> {
-    crate::bitcoincore::utils::verify_transaction(unsigned_tx, send_amount, role, rpc_client)
 }

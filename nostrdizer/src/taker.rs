@@ -1,9 +1,9 @@
 use crate::{
+    bitcoincore::taker::Taker,
     errors::Error,
     types::{
-        AuthCommitment, CJFee, Fill, IoAuth, MaxMineingFee, NostrdizerMessage,
-        NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer, Role, Taker,
-        Transaction, VerifyCJInfo,
+        AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages,
+        NostrdizerOffer, Offer, Transaction,
     },
     utils::{self, decrypt_message},
 };
@@ -17,12 +17,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 impl Taker {
-    /// Get balance eligible (2 confirmations) for CJ
-    pub fn get_eligible_balance(&mut self) -> Result<Amount, Error> {
-        utils::get_eligible_balance(&self.rpc_client)
-    }
-
     // TODO: This doesnt actually do anything
+    // This is used in JM but not really needed in nostr as nostr pub keys are used to encrypt
+    // One advantage of JM is they encrypt with the bitcoin key used in the transaction so that you know
+    // you are communicating with the person who can spend the coins
+    // this could be done on nostr by using the bitcoin key as the nostr key
     pub fn get_maker_pubkey(&mut self) -> Result<(), Error> {
         let filter = ReqFilter {
             ids: None,
@@ -338,41 +337,17 @@ impl Taker {
             }),
         };
 
-        let encypted_content =
+        let encrypted_content =
             utils::encrypt_message(&self.identity.secret_key, peer_pub_key, &message)?;
 
         self.nostr_client.publish_ephemeral_event(
             &self.identity,
             129,
-            &encypted_content,
+            &encrypted_content,
             &[vec!["p".to_string(), peer_pub_key.to_string()]],
             0,
         )?;
 
         Ok(())
-    }
-
-    /// Verify that taker does not pay more the set fee for CJ
-    pub fn verify_transaction(
-        &mut self,
-        send_amount: Amount,
-        unsigned_tx: &str,
-    ) -> Result<VerifyCJInfo, Error> {
-        let cj_fee = CJFee {
-            abs_fee: self.config.cj_fee.abs_fee,
-            rel_fee: self.config.cj_fee.rel_fee,
-        };
-
-        let mining_fee = MaxMineingFee {
-            abs_fee: self.config.mining_fee.abs_fee,
-            rel_fee: self.config.mining_fee.rel_fee,
-        };
-
-        utils::verify_transaction(
-            unsigned_tx,
-            send_amount,
-            Role::Taker(cj_fee, mining_fee),
-            &self.rpc_client,
-        )
     }
 }

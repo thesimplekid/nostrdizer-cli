@@ -1,3 +1,4 @@
+#[cfg(feature = "bitcoincore")]
 pub mod bitcoincore;
 pub mod errors;
 pub mod maker;

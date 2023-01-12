@@ -1,7 +1,6 @@
 use crate::errors::Error;
-use crate::types::{Role, VerifyCJInfo};
 
-use bitcoin::{Amount, Denomination, SignedAmount};
+use bitcoin::Amount;
 use bitcoincore_rpc::{Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::{
     GetRawTransactionResultVin, GetRawTransactionResultVout, ListUnspentResultEntry,
@@ -11,14 +10,14 @@ use bitcoincore_rpc_json::{
 /// Get output value of decoded tx
 #[cfg(feature = "bitcoincore")]
 pub fn get_output_value(
-    vout: Vec<GetRawTransactionResultVout>,
+    vout: &[GetRawTransactionResultVout],
     rpc_client: &RPCClient,
 ) -> Result<(Amount, Amount), Error> {
     let mut my_output_value = Amount::ZERO;
     let mut output_value = Amount::ZERO;
     for vout in vout {
-        if let Some(address) = vout.script_pub_key.address {
-            let info = rpc_client.get_address_info(&address)?;
+        if let Some(address) = &vout.script_pub_key.address {
+            let info = rpc_client.get_address_info(address)?;
 
             if info.is_mine == Some(true) {
                 my_output_value += vout.value;
@@ -37,7 +36,7 @@ pub fn sign_tx_hex(
 ) -> Result<SignRawTransactionResult, Error> {
     Ok(rpc_client.sign_raw_transaction_with_wallet(unsigned_tx, None, None)?)
 }
-
+/*
 #[cfg(feature = "bitcoincore")]
 pub fn verify_transaction(
     unsigned_tx: &str,
@@ -96,6 +95,7 @@ pub fn verify_transaction(
         }
     }
 }
+*/
 
 /// Gets balance eligible for coinjoin
 // Coins with 2 or more confirmations
@@ -125,7 +125,7 @@ pub fn get_mining_fee(rpc_client: &RPCClient) -> Result<Amount, Error> {
 /// Get the input value of decoded tx
 #[cfg(feature = "bitcoincore")]
 pub fn get_input_value(
-    vin: Vec<GetRawTransactionResultVin>,
+    vin: &[GetRawTransactionResultVin],
     rpc_client: &RPCClient,
 ) -> Result<(Amount, Amount), Error> {
     let mut my_input_value: bitcoin::Amount = Amount::ZERO;

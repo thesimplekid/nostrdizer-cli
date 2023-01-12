@@ -1,12 +1,14 @@
 use crate::{
+    bitcoincore::maker::Maker,
     errors::Error,
     podle,
     types::{
-        AbsOffer, AuthCommitment, CJFee, Fill, IoAuth, Maker, NostrdizerMessage,
-        NostrdizerMessageKind, NostrdizerMessages, Offer, Pubkey, RelOffer, Role, VerifyCJInfo,
+        AbsOffer, AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind,
+        NostrdizerMessages, Offer, Pubkey, RelOffer,
     },
     utils::{self, decrypt_message},
 };
+
 use nostr_rust::{events::Event, req::ReqFilter, utils::get_timestamp};
 
 pub use bitcoin::Amount;
@@ -21,7 +23,7 @@ impl Maker {
 
         let maxsize = match self.config.maxsize {
             Some(maxsize) => maxsize,
-            None => utils::get_eligible_balance(&self.rpc_client)?,
+            None => self.get_eligible_balance()?,
         };
 
         // TODO: This should be set better
@@ -312,24 +314,5 @@ impl Maker {
                 return Err(Error::TakerFailedToSendTransaction);
             }
         }
-    }
-
-    /// Maker verify and sign tx
-    pub fn verify_transaction(
-        &mut self,
-        fill_offer: &Fill,
-        unsigned_tx: &str,
-    ) -> Result<VerifyCJInfo, Error> {
-        let cj_fee = CJFee {
-            abs_fee: self.config.abs_fee,
-            rel_fee: self.config.rel_fee,
-        };
-
-        utils::verify_transaction(
-            unsigned_tx,
-            fill_offer.amount,
-            Role::Maker(cj_fee, self.config.minsize, self.config.maxsize),
-            &self.rpc_client,
-        )
     }
 }

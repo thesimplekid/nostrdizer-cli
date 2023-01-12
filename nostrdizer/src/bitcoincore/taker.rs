@@ -1,12 +1,17 @@
-use crate::bitcoincore::utils::{get_mining_fee, get_unspent, sign_tx_hex};
+use crate::bitcoincore::{
+    types::BitcoinCoreCreditals,
+    utils::{
+        get_eligible_balance, get_input_value, get_mining_fee, get_output_value, get_unspent,
+        sign_tx_hex,
+    },
+};
 use crate::errors::Error;
 use crate::podle;
 use crate::types::{
-    AuthCommitment, BitcoinCoreCreditals, CJFee, IoAuth, MaxMineingFee, NostrdizerOffer, Taker,
-    TakerConfig,
+    AuthCommitment, CJFee, IoAuth, MaxMineingFee, NostrdizerOffer, TakerConfig, VerifyCJInfo,
 };
 
-use bitcoin::Amount;
+use bitcoin::{Amount, Denomination, SignedAmount};
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
 
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
@@ -17,6 +22,14 @@ use bitcoincore_rpc_json::{
 use log::debug;
 use std::collections::HashMap;
 use std::str::FromStr;
+#[cfg(feature = "bitcoincore")]
+pub struct Taker {
+    pub identity: Identity,
+    pub config: TakerConfig,
+    pub nostr_client: NostrClient,
+    pub rpc_client: RPCClient,
+}
+
 impl Taker {
     #[cfg(feature = "bitcoincore")]
     pub fn new(
@@ -231,6 +244,44 @@ impl Taker {
 
     #[cfg(feature = "bitcoincore")]
     pub fn combine_raw_transaction(&mut self, txs: &[String]) -> Result<String, Error> {
-        Ok(self.rpc_client.combine_raw_transaction(&txs)?)
+        Ok(self.rpc_client.combine_raw_transaction(txs)?)
+    }
+
+    #[cfg(feature = "bitcoincore")]
+    pub fn get_eligible_balance(&mut self) -> Result<Amount, Error> {
+        get_eligible_balance(&self.rpc_client)
+    }
+
+    #[cfg(feature = "bitcoincore")]
+    pub fn verify_transaction(
+        &mut self,
+        unsigned_tx: &str,
+        send_amount: &Amount,
+    ) -> Result<VerifyCJInfo, Error> {
+        let decoded_transaction = &self
+            .rpc_client
+            .decode_raw_transaction(unsigned_tx, None)
+            .unwrap();
+        let (input_value, my_input_value) =
+            get_input_value(&decoded_transaction.vin, &self.rpc_client)?;
+        let (output_value, my_output_value) =
+            get_output_value(&decoded_transaction.vout, &self.rpc_client)?;
+
+        let mining_fee = (input_value - output_value).to_signed()?;
+
+        let maker_fee: SignedAmount =
+            my_input_value.to_signed()? - my_output_value.to_signed()? - mining_fee;
+        let abs_fee_check = maker_fee.lt(&self.config.cj_fee.abs_fee.to_signed()?);
+        let fee_as_percent = maker_fee.to_float_in(Denomination::Satoshi)
+            / send_amount.to_float_in(Denomination::Satoshi);
+
+        let rel_fee_check = fee_as_percent.lt(&self.config.cj_fee.rel_fee);
+        Ok(VerifyCJInfo {
+            mining_fee,
+            maker_fee,
+            verifyed: abs_fee_check
+                && rel_fee_check
+                && mining_fee.lt(&self.config.mining_fee.abs_fee.to_signed()?),
+        })
     }
 }
