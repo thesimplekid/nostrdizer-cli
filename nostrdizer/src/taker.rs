@@ -1,103 +1,51 @@
 use crate::{
     errors::Error,
-    podle,
     types::{
-        AuthCommitment, BitcoinCoreCreditals, CJFee, Fill, IoAuth, MaxMineingFee,
-        NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, NostrdizerOffer, Offer,
-        Transaction, VerifyCJInfo,
+        AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages,
+        NostrdizerOffer, Offer, TakerConfig, Transaction, VerifyCJInfo, AUTH, FILL, IOAUTH, PUBKEY,
+        SIGNED_TRANSACTION, TRANSACTION,
     },
     utils::{self, decrypt_message},
 };
 
-use bitcoin::{Amount, Denomination};
+use crate::bitcoincore::utils::{get_input_value, get_output_value};
+use bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination};
 
-use bitcoincore_rpc_json::{
-    CreateRawTransactionInput, ListUnspentResultEntry, SignRawTransactionResult,
-};
-use nostr_rust::{
-    events::Event, keys::get_random_secret_key, nostr_client::Client as NostrClient,
-    req::ReqFilter, utils::get_timestamp, Identity,
-};
-
+#[cfg(feature = "bdk")]
+use bdk::{database::AnyDatabase, Wallet};
+use bitcoin_hashes::{sha256, Hash};
+#[cfg(feature = "bitcoincore")]
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
-use log::{debug, info};
+use log::debug;
+
+#[cfg(all(feature = "bitcoincore", not(feature = "bdk")))]
+use crate::bitcoincore::taker::Taker;
+
+#[cfg(all(feature = "bdk", not(feature = "bitcoincore")))]
+use crate::bdk::taker::Taker;
+
+use nostr_rust::{
+    events::{Event, EventPrepare},
+    req::ReqFilter,
+    utils::get_timestamp,
+};
+use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
+
 use serde_json::Value;
-use std::collections::HashMap;
 use std::collections::HashSet;
-use std::str::FromStr;
-
-struct Config {
-    cj_fee: CJFee,
-    mining_fee: MaxMineingFee,
-    minium_makers: usize,
-}
-
-pub struct Taker {
-    pub identity: Identity,
-    config: Config,
-    nostr_client: NostrClient,
-    rpc_client: RPCClient,
-}
+use std::{collections::HashMap, f64::consts::E};
 
 impl Taker {
-    pub fn new(
-        priv_key: Option<String>,
-        relay_urls: Vec<&str>,
-        bitcoin_core_creds: BitcoinCoreCreditals,
-    ) -> Result<Self, Error> {
-        let priv_key = match priv_key {
-            Some(key) => key,
-            None => {
-                let (sk, _) = get_random_secret_key();
-                hex::encode(sk.as_ref())
-            }
-        };
-        let identity = Identity::from_str(&priv_key)?;
-        let nostr_client = NostrClient::new(relay_urls)?;
-        let rpc_client = RPCClient::new(
-            &bitcoin_core_creds.rpc_url,
-            Auth::UserPass(
-                bitcoin_core_creds.rpc_username,
-                bitcoin_core_creds.rpc_password,
-            ),
-        )?;
-        let config = Config {
-            // TODO: Get this from config
-            cj_fee: CJFee {
-                rel_fee: 0.30,
-                abs_fee: Amount::from_sat(10000),
-            },
-            mining_fee: MaxMineingFee {
-                abs_fee: Amount::from_sat(10000),
-                rel_fee: 0.20,
-            },
-            minium_makers: 1,
-        };
-        let taker = Self {
-            identity,
-            config,
-            nostr_client,
-            rpc_client,
-        };
-        Ok(taker)
-    }
-
-    /// Get balance eligible (2 confirmations) for CJ
-    pub fn get_eligible_balance(&mut self) -> Result<Amount, Error> {
-        utils::get_eligible_balance(&self.rpc_client)
-    }
-
-    /// Get unspent UTXOs
-    pub fn get_unspent(&mut self) -> Result<Vec<ListUnspentResultEntry>, Error> {
-        utils::get_unspent(&self.rpc_client)
-    }
-
     // TODO: This doesnt actually do anything
+    // This is used in JM but not really needed in nostr as nostr pub keys are used to encrypt
+    // One advantage of JM is they encrypt with the bitcoin key used in the transaction so that you know
+    // you are communicating with the person who can spend the coins
+    // this could be done on nostr by using the bitcoin key as the nostr key
     pub fn get_maker_pubkey(&mut self) -> Result<(), Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20126]),
+            kinds: Some(vec![PUBKEY]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -116,7 +64,8 @@ impl Taker {
                         break;
                     }
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20126
+                        if event.verify().is_ok()
+                            && event.kind == PUBKEY
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::PubKey(_pubkey) = decrypt_message(
@@ -139,12 +88,24 @@ impl Taker {
         }
     }
 
+    /*
+    pub fn verify_transaction(
+        psbt: PartiallySignedTransaction,
+        send_amount: &Amount,
+    ) -> Result<VerifyCJInfo, Error> {
+        todo!();
+    }
+    */
+
     /// Gets signed peer tx
-    pub fn get_signed_peer_transaction(&mut self, peer_count: usize) -> Result<String, Error> {
+    pub fn get_signed_peer_transaction(
+        &mut self,
+        peer_count: usize,
+    ) -> Result<Vec<PartiallySignedTransaction>, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20130]),
+            kinds: Some(vec![SIGNED_TRANSACTION]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -164,7 +125,8 @@ impl Taker {
                     }
 
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20130
+                        if event.verify().is_ok()
+                            && event.kind == SIGNED_TRANSACTION
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::SignedCJ(signed_tx) = decrypt_message(
@@ -178,15 +140,22 @@ impl Taker {
                                     .insert(event.pub_key.to_string(), signed_tx);
 
                                 if peer_signed_transaction.len() >= peer_count {
+                                    /*
                                     let txs: Vec<String> = peer_signed_transaction
                                         .values()
                                         .map(|p| hex::encode(p.tx.clone()))
                                         .collect();
 
-                                    let combined_transaction =
-                                        self.rpc_client.combine_raw_transaction(&txs)?;
+                                    let combined_transaction = "".to_string();
+                                    // self.combine_raw_transaction(&txs)?;
+                                        */
 
-                                    return Ok(combined_transaction);
+                                    let psbts = peer_signed_transaction
+                                        .values()
+                                        .map(|p| p.psbt.clone())
+                                        .collect();
+
+                                    return Ok(psbts);
                                 }
                             }
                         }
@@ -206,7 +175,7 @@ impl Taker {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20128]),
+            kinds: Some(vec![IOAUTH]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -228,7 +197,8 @@ impl Taker {
                     }
 
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20128
+                        if event.verify().is_ok()
+                            && event.kind == IOAUTH
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::MakerInputs(maker_input) = decrypt_message(
@@ -268,146 +238,6 @@ impl Taker {
         }
     }
 
-    /// Gets the taker inputs for CJ transaction
-    pub fn get_inputs(
-        &mut self,
-        amount: Amount,
-    ) -> Result<(Amount, Vec<CreateRawTransactionInput>), Error> {
-        let unspent = self.rpc_client.list_unspent(None, None, None, None, None)?;
-        let mut inputs = vec![];
-        let mut value: Amount = Amount::ZERO;
-        for utxo in unspent {
-            let input = CreateRawTransactionInput {
-                txid: utxo.txid,
-                vout: utxo.vout,
-                sequence: None,
-            };
-
-            inputs.push(input);
-            value += utxo.amount;
-
-            if value >= amount {
-                break;
-            }
-        }
-
-        Ok((value, inputs))
-    }
-
-    /// Taker generate podle
-    pub fn generate_podle(&self) -> Result<AuthCommitment, Error> {
-        // TODO: Get address somewhere else
-        let unspent = self.rpc_client.list_unspent(None, None, None, None, None)?;
-        let address = unspent[0].clone().address.unwrap();
-
-        let priv_key = self.rpc_client.dump_private_key(&address)?;
-        // let priv_key = PrivateKey::from_slice( b"\xf00\x1aD3R\xba\xa9&\xce$\xe3\xf6,\xf3j\xden\x87\x85\xee\xe8\xd4c\xd4C\x80\x1f\x81\x02j\xe9", bitcoin::Network::Regtest).unwrap();
-
-        podle::generate_podle(0, priv_key)
-    }
-
-    /// Creates CJ transaction
-    pub fn create_cj(
-        &mut self,
-        send_amount: Amount,
-        maker_inputs: &Vec<(NostrdizerOffer, IoAuth)>,
-    ) -> Result<String, Error> {
-        let mut outputs = HashMap::new();
-        let mut total_maker_fees = Amount::ZERO;
-        // REVIEW: Must be a better way to avoid nested map
-        let mut inputs = maker_inputs
-            .iter()
-            .flat_map(|(_offer, input)| {
-                input
-                    .utxos
-                    .iter()
-                    .map(|(txid, vout)| CreateRawTransactionInput {
-                        txid: *txid,
-                        vout: *vout,
-                        sequence: None,
-                    })
-                    .collect::<Vec<CreateRawTransactionInput>>()
-            })
-            .collect::<Vec<CreateRawTransactionInput>>();
-
-        for (offer, maker_input) in maker_inputs {
-            // Sums up total value of a makers input UTXOs
-            let maker_input_val = maker_input.utxos.iter().fold(Amount::ZERO, |val, input| {
-                val + self
-                    .rpc_client
-                    .get_tx_out(&input.0, input.1, Some(false))
-                    .unwrap()
-                    .unwrap()
-                    .value
-            });
-            outputs.insert(maker_input.coinjoin_address.to_string(), send_amount);
-
-            // Gets a makers offer from Hashmap in order to calculate their required fee
-            let maker_fee = offer.cjfee; // Amount::from_sat(
-            let change_value = maker_input_val - send_amount + maker_fee;
-            outputs.insert(maker_input.change_address.to_string(), change_value);
-
-            total_maker_fees += maker_fee;
-        }
-        // Taker inputs
-        // TODO: calc fee
-        let mining_fee = Amount::from_sat(500);
-        let mut taker_inputs = self.get_inputs(send_amount + total_maker_fees + mining_fee)?;
-        inputs.append(&mut taker_inputs.1);
-        // Taker output
-        let taker_cj_out = self.rpc_client.get_new_address(Some("Cj out"), None)?;
-        outputs.insert(taker_cj_out.to_string(), send_amount);
-
-        // Taker change output
-        // REVIEW:
-        // Right now taker change is added here with a dummy amount
-        // Then replaced later, so that the fee can be calculated
-        // Be better to not have to add then replace
-        let taker_change_out = self.rpc_client.get_raw_change_address(None)?;
-        outputs.insert(taker_change_out.to_string(), Amount::from_sat(1000));
-        let transaction = self
-            .rpc_client
-            .create_raw_transaction(&inputs, &outputs, None, None)?;
-
-        // Calc change maker should get
-        // REVIEW: Not sure this fee calc is correct
-        // don't think it included sig size
-        let mining_fee = match utils::get_mining_fee(&self.rpc_client) {
-            Ok(fee) => {
-                let cal_fee =
-                    Amount::from_sat((fee.to_sat() as usize * transaction.vsize()) as u64 / 1000);
-                if cal_fee > Amount::from_sat(270) {
-                    cal_fee
-                } else {
-                    Amount::from_sat(270)
-                }
-            }
-            Err(_) => Amount::from_sat(500),
-        };
-
-        // Calculates taker change
-        debug!("Mining fee: {:?} sats", mining_fee.to_sat());
-        let taker_change = taker_inputs.0.to_signed()?
-            - send_amount.to_signed()?
-            - total_maker_fees.to_signed()?
-            - mining_fee.to_signed()?;
-
-        if taker_change < Amount::ZERO.to_signed()? {
-            return Err(Error::InsufficientFunds);
-        }
-        // Replaces change output that has been added above
-        outputs.insert(taker_change_out.to_string(), taker_change.to_unsigned()?);
-
-        debug!("Inputs {:?}", inputs);
-        debug!("Outputs: {:?}", outputs);
-        let tx = self
-            .rpc_client
-            .create_raw_transaction_hex(&inputs, &outputs, None, None)
-            .unwrap();
-
-        Ok(tx)
-    }
-
     /// Send fill offer from taker to maker
     pub fn send_fill_offer_message(
         &mut self,
@@ -423,8 +253,10 @@ impl Taker {
         matching_offers.retain(|o| unique_makers.contains(&o.maker));
 
         let mut last_peer = 0;
-        let commitment = self.generate_podle()?;
-        let commitment = commitment.commit; // sha256::Hash::hash(commitment.p2.to_string().as_bytes());
+        //let commitment = self.generate_podle()?;
+        //let commitment = commitment.commit; // sha256::Hash::hash(commitment.p2.to_string().as_bytes());
+        // TODO: Need to get the priv key from
+        let commitment = sha256::Hash::hash("".as_bytes());
 
         let mut matched_peers = vec![];
         for peer in matching_offers.iter_mut() {
@@ -434,15 +266,25 @@ impl Taker {
                 amount: send_amount,
                 tencpubkey: "".to_string(),
                 commitment,
-                nick_signature: "".to_string(),
             };
             let message = NostrdizerMessage {
                 event_type: NostrdizerMessageKind::FillOffer,
                 event: NostrdizerMessages::Fill(fill_offer),
             };
+            debug!("{:?}", message);
             let encypted_content =
                 utils::encrypt_message(&self.identity.secret_key, &peer.maker, &message)?;
 
+            let event = EventPrepare {
+                pub_key: self.identity.public_key_str.clone(),
+                created_at: get_timestamp(),
+                kind: FILL,
+                tags: vec![vec!["p".to_string(), peer.maker.to_string()]],
+                content: encypted_content,
+            }
+            .to_event(&self.identity, 0);
+
+            /*
             self.nostr_client.publish_ephemeral_event(
                 &self.identity,
                 125,
@@ -450,6 +292,8 @@ impl Taker {
                 &[vec!["p".to_string(), peer.maker.to_string()]],
                 0,
             )?;
+            */
+            self.nostr_client.publish_event(&event)?;
             matched_peers.push(peer.clone());
             last_peer += 1;
             if last_peer >= peer_count {
@@ -460,6 +304,7 @@ impl Taker {
         Ok(matched_peers)
     }
 
+    /// Publish the podle commitment
     pub fn send_auth_message(
         &mut self,
         auth_commitment: AuthCommitment,
@@ -473,7 +318,18 @@ impl Taker {
         for offer in matched_offers {
             let encypted_content =
                 utils::encrypt_message(&self.identity.secret_key, &offer.maker, &message)?;
+            let event = EventPrepare {
+                pub_key: self.identity.public_key_str.clone(),
+                kind: AUTH,
+                created_at: get_timestamp(),
+                tags: vec![vec!["p".to_string(), offer.maker]],
+                content: encypted_content,
+            }
+            .to_event(&self.identity, 0);
 
+            self.nostr_client.publish_event(&event)?;
+
+            /*
             self.nostr_client.publish_ephemeral_event(
                 &self.identity,
                 127,
@@ -481,6 +337,7 @@ impl Taker {
                 &[vec!["p".to_string(), offer.maker]],
                 0,
             )?;
+            */
         }
         Ok(())
     }
@@ -537,67 +394,36 @@ impl Taker {
     pub fn send_unsigned_transaction(
         &mut self,
         peer_pub_key: &str,
-        tx_hex: &str,
+        psbt: &PartiallySignedTransaction,
     ) -> Result<(), Error> {
         let message = NostrdizerMessage {
             event_type: NostrdizerMessageKind::UnsignedCJ,
-            event: NostrdizerMessages::UnsignedCJ(Transaction {
-                tx: tx_hex.to_string(),
-                nick_signature: "".to_string(),
-            }),
+            event: NostrdizerMessages::UnsignedCJ(Transaction { psbt: psbt.clone() }),
         };
 
-        let encypted_content =
+        let encrypted_content =
             utils::encrypt_message(&self.identity.secret_key, peer_pub_key, &message)?;
 
+        let event = EventPrepare {
+            pub_key: self.identity.public_key_str.clone(),
+            created_at: get_timestamp(),
+            kind: TRANSACTION,
+            tags: vec![vec!["p".to_string(), peer_pub_key.to_string()]],
+            content: encrypted_content,
+        }
+        .to_event(&self.identity, 0);
+
+        self.nostr_client.publish_event(&event)?;
+        /*
         self.nostr_client.publish_ephemeral_event(
             &self.identity,
             129,
-            &encypted_content,
+            &encrypted_content,
             &[vec!["p".to_string(), peer_pub_key.to_string()]],
             0,
         )?;
+        */
 
         Ok(())
-    }
-
-    /// Verify that taker does not pay more the set fee for CJ
-    pub fn verify_transaction(
-        &mut self,
-        send_amount: Amount,
-        unsigned_tx: &str,
-    ) -> Result<VerifyCJInfo, Error> {
-        let cj_fee = CJFee {
-            abs_fee: self.config.cj_fee.abs_fee,
-            rel_fee: self.config.cj_fee.rel_fee,
-        };
-
-        let mining_fee = MaxMineingFee {
-            abs_fee: self.config.mining_fee.abs_fee,
-            rel_fee: self.config.mining_fee.rel_fee,
-        };
-
-        utils::verify_transaction(
-            unsigned_tx,
-            send_amount,
-            utils::Role::Taker(cj_fee, mining_fee),
-            &self.rpc_client,
-        )
-    }
-
-    /// Sign tx
-    pub fn sign_transaction(
-        &mut self,
-        unsigned_tx: &str,
-    ) -> Result<SignRawTransactionResult, Error> {
-        utils::sign_tx_hex(unsigned_tx, &self.rpc_client)
-    }
-
-    /// Broadcast transaction
-    pub fn broadcast_transaction(
-        &mut self,
-        final_hex: SignRawTransactionResult,
-    ) -> Result<bitcoin::Txid, Error> {
-        Ok(self.rpc_client.send_raw_transaction(&final_hex.hex)?)
     }
 }

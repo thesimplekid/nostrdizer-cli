@@ -2,97 +2,39 @@ use crate::{
     errors::Error,
     podle,
     types::{
-        AbsOffer, AuthCommitment, BitcoinCoreCreditals, CJFee, Fill, IoAuth, NostrdizerMessage,
-        NostrdizerMessageKind, NostrdizerMessages, Offer, Pubkey, RelOffer, VerifyCJInfo,
+        AbsOffer, AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind,
+        NostrdizerMessages, Offer, Pubkey, RelOffer, ABS_OFFER, AUTH, FILL, IOAUTH, REL_OFFER,
+        TRANSACTION,
     },
     utils::{self, decrypt_message},
 };
-use bitcoin_hashes::sha256;
+
+use bitcoin::psbt::PartiallySignedTransaction;
 use nostr_rust::{
-    events::Event, keys::get_random_secret_key, nostr_client::Client as NostrClient,
-    req::ReqFilter, utils::get_timestamp, Identity,
+    events::{Event, EventPrepare},
+    req::ReqFilter,
+    utils::get_timestamp,
 };
 
 pub use bitcoin::Amount;
-use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
-use bitcoincore_rpc_json::SignRawTransactionResult;
 
-use log::debug;
-
-use std::str::FromStr;
-
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+#[cfg(all(feature = "bitcoincore", not(feature = "bdk")))]
+use crate::bitcoincore::maker::Maker;
+
+#[cfg(all(feature = "bdk", not(feature = "bitcoincore")))]
+use crate::bdk::maker::Maker;
 
 use rand::{thread_rng, Rng};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Config {
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
-    pub abs_fee: Amount,
-    pub rel_fee: f64,
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
-    pub minsize: Amount,
-    #[serde(default, with = "bitcoin::util::amount::serde::as_btc::opt")]
-    pub maxsize: Option<Amount>,
-    pub will_broadcast: bool,
-}
-
-pub struct Maker {
-    pub identity: Identity,
-    config: Config,
-    nostr_client: NostrClient,
-    rpc_client: RPCClient,
-    fill_commitment: Option<sha256::Hash>,
-}
-
 impl Maker {
-    pub fn new(
-        priv_key: Option<String>,
-        relay_urls: Vec<&str>,
-        config: &mut Config,
-        bitcoin_core_creds: BitcoinCoreCreditals,
-    ) -> Result<Self, Error> {
-        let priv_key = match priv_key {
-            Some(key) => key,
-            None => {
-                let (sk, _) = get_random_secret_key();
-                hex::encode(sk.as_ref())
-            }
-        };
-        let identity = Identity::from_str(&priv_key)?;
-
-        let nostr_client = NostrClient::new(relay_urls)?;
-
-        let rpc_client = RPCClient::new(
-            &bitcoin_core_creds.rpc_url,
-            Auth::UserPass(
-                bitcoin_core_creds.rpc_username,
-                bitcoin_core_creds.rpc_password,
-            ),
-        )?;
-
-        if config.maxsize.is_none() {
-            let bal = utils::get_eligible_balance(&rpc_client)?;
-            config.maxsize = Some(bal);
-        }
-
-        let maker = Self {
-            identity,
-            config: config.clone(),
-            nostr_client,
-            rpc_client,
-            fill_commitment: None,
-        };
-        Ok(maker)
-    }
-
     pub fn publish_offer(&mut self) -> Result<(), Error> {
         let mut rng = thread_rng();
 
         let maxsize = match self.config.maxsize {
             Some(maxsize) => maxsize,
-            None => utils::get_eligible_balance(&self.rpc_client)?,
+            None => self.get_eligible_balance()?,
         };
 
         // TODO: This should be set better
@@ -106,8 +48,6 @@ impl Maker {
             minsize: self.config.minsize,
             maxsize,
             txfee: Amount::ZERO,
-            // TODO:
-            nick_signature: "".to_string(),
         };
 
         let content = serde_json::to_string(&NostrdizerMessage {
@@ -126,7 +66,6 @@ impl Maker {
             maxsize,
             txfee: Amount::ZERO,
             // TODO:
-            nick_signature: "".to_string(),
         };
         let content = serde_json::to_string(&NostrdizerMessage {
             event_type: NostrdizerMessageKind::Offer,
@@ -144,7 +83,7 @@ impl Maker {
         let filter = ReqFilter {
             ids: None,
             authors: Some(vec![self.identity.public_key_str.clone()]),
-            kinds: Some(vec![10124]),
+            kinds: Some(vec![REL_OFFER]),
             e: None,
             p: None,
             since: None,
@@ -170,7 +109,7 @@ impl Maker {
         let filter = ReqFilter {
             ids: None,
             authors: Some(vec![self.identity.public_key_str.clone()]),
-            kinds: Some(vec![10124]),
+            kinds: Some(vec![REL_OFFER, ABS_OFFER]),
             e: None,
             p: None,
             since: None,
@@ -179,9 +118,8 @@ impl Maker {
         };
 
         if let Ok(events) = self.nostr_client.get_events_of(vec![filter]) {
-            if !events.is_empty() {
-                let offer_event = events.last().unwrap();
-                let event_id = &offer_event.id;
+            for event in events {
+                let event_id = &event.id;
                 self.nostr_client
                     .delete_event(&self.identity, event_id, 0)?;
             }
@@ -194,7 +132,7 @@ impl Maker {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20125]),
+            kinds: Some(vec![FILL]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -213,7 +151,7 @@ impl Maker {
                     }
 
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20125
+                        if event.kind == FILL
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::Fill(fill_offer) = decrypt_message(
@@ -238,45 +176,11 @@ impl Maker {
         }
     }
 
-    /// Gets maker input for CJ
-    pub fn get_inputs(&mut self, fill_offer: &Fill) -> Result<IoAuth, Error> {
-        let unspent = self.rpc_client.list_unspent(None, None, None, None, None)?;
-        let mut inputs = vec![];
-        let mut value: Amount = Amount::ZERO;
-        for utxo in unspent {
-            let input = (utxo.txid, utxo.vout);
-
-            inputs.push(input);
-            value += utxo.amount;
-
-            if value >= fill_offer.amount {
-                break;
-            }
-        }
-
-        let coinjoin_address = self.rpc_client.get_new_address(Some("CJ out"), None)?;
-        debug!("Maker cj out: {}", coinjoin_address);
-
-        let change_address = self.rpc_client.get_raw_change_address(None).unwrap();
-        debug!("Maker change out: {}", change_address);
-
-        let maker_input = IoAuth {
-            utxos: inputs,
-            coinjoin_address,
-            change_address,
-            maker_auth_pub: "".to_string(),
-            bitcoin_sig: "".to_string(),
-            nick_signature: "".to_string(),
-        };
-
-        Ok(maker_input)
-    }
-
     pub fn get_commitment_auth(&mut self) -> Result<AuthCommitment, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20127]),
+            kinds: Some(vec![AUTH]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -295,7 +199,8 @@ impl Maker {
                         break;
                     }
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20127
+                        if event.verify().is_ok()
+                            && event.kind == AUTH
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::Auth(auth_commitment) = decrypt_message(
@@ -337,13 +242,26 @@ impl Maker {
         let encypted_content =
             utils::encrypt_message(&self.identity.secret_key, peer_pub_key, &message)?;
 
+        let event = EventPrepare {
+            pub_key: self.identity.public_key_str.clone(),
+            created_at: get_timestamp(),
+            kind: IOAUTH,
+            tags: vec![vec!["p".to_string(), peer_pub_key.to_string()]],
+            content: encypted_content,
+        }
+        .to_event(&self.identity, 0);
+
+        self.nostr_client.publish_event(&event)?;
+
+        /*
         self.nostr_client.publish_ephemeral_event(
             &self.identity,
-            128,
+            IOAUTH,
             &encypted_content,
             &[vec!["p".to_string(), peer_pub_key.to_string()]],
             0,
         )?;
+        */
 
         Ok(())
     }
@@ -355,7 +273,6 @@ impl Maker {
             event_type: NostrdizerMessageKind::MakerPubkey,
             event: NostrdizerMessages::PubKey(Pubkey {
                 mencpubkey: "".to_string(),
-                nick_signature: "".to_string(),
             }),
         };
 
@@ -374,11 +291,11 @@ impl Maker {
     }
 
     /// Maker waits for unsigned CJ transaction
-    pub fn get_unsigned_cj_transaction(&mut self) -> Result<String, Error> {
+    pub fn get_unsigned_cj_transaction(&mut self) -> Result<PartiallySignedTransaction, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20129]),
+            kinds: Some(vec![TRANSACTION]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -397,7 +314,8 @@ impl Maker {
                         break;
                     }
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20129
+                        if event.verify().is_ok()
+                            && event.kind == TRANSACTION
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::UnsignedCJ(unsigned_tx_hex) =
@@ -409,7 +327,7 @@ impl Maker {
                                 .event
                             {
                                 self.nostr_client.unsubscribe(&subscription_id)?;
-                                return Ok(unsigned_tx_hex.tx);
+                                return Ok(unsigned_tx_hex.psbt);
                             }
                         }
                     }
@@ -419,47 +337,5 @@ impl Maker {
                 return Err(Error::TakerFailedToSendTransaction);
             }
         }
-    }
-
-    /// Maker verify and sign tx
-    pub fn verify_transaction(
-        &mut self,
-        fill_offer: &Fill,
-        unsigned_tx: &str,
-    ) -> Result<VerifyCJInfo, Error> {
-        let cj_fee = CJFee {
-            abs_fee: self.config.abs_fee,
-            rel_fee: self.config.rel_fee,
-        };
-
-        utils::verify_transaction(
-            unsigned_tx,
-            fill_offer.amount,
-            utils::Role::Maker(cj_fee, self.config.minsize, self.config.maxsize),
-            &self.rpc_client,
-        )
-    }
-
-    /// Sign tx hex
-    pub fn sign_tx_hex(
-        &mut self,
-        unsigned_tx_hex: &str,
-    ) -> Result<SignRawTransactionResult, Error> {
-        utils::sign_tx_hex(unsigned_tx_hex, &self.rpc_client)
-    }
-
-    /// Send signed tx back to taker
-    pub fn send_signed_tx(
-        &mut self,
-        peer_pub_key: &str,
-        signed_tx: &SignRawTransactionResult,
-    ) -> Result<(), Error> {
-        utils::send_signed_tx(
-            &self.identity,
-            peer_pub_key,
-            signed_tx.clone(),
-            &mut self.nostr_client,
-        )?;
-        Ok(())
     }
 }

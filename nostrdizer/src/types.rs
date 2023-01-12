@@ -1,8 +1,21 @@
 pub use bitcoin::Amount;
-use bitcoin::{Address, SignedAmount, Txid};
+use bitcoin::{
+    psbt::{Input, PartiallySignedTransaction},
+    Address, OutPoint, SignedAmount, Txid,
+};
 use bitcoin_hashes::sha256::Hash;
 use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
+
+// Nostr Message Kinds
+pub const ABS_OFFER: u16 = 10123;
+pub const REL_OFFER: u16 = 10124;
+pub const FILL: u16 = 125;
+pub const PUBKEY: u16 = 126;
+pub const AUTH: u16 = 127;
+pub const IOAUTH: u16 = 128;
+pub const TRANSACTION: u16 = 129;
+pub const SIGNED_TRANSACTION: u16 = 130;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NostrdizerOffer {
@@ -32,8 +45,6 @@ pub struct RelOffer {
     pub txfee: Amount,
     /// CJ Fee maker expects
     pub cjfee: f64,
-    // This isn't needed for nostr as events are signed
-    pub nick_signature: String,
 }
 
 /// Maker Absolute offer
@@ -55,8 +66,6 @@ pub struct AbsOffer {
     /// CJ Fee maker expects
     #[serde(with = "bitcoin::util::amount::serde::as_sat")]
     pub cjfee: Amount,
-    // This isn't needed for nostr as events are signed
-    pub nick_signature: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -78,8 +87,6 @@ pub struct Fill {
     pub tencpubkey: String,
     /// Used for Poodle Hash of P2
     pub commitment: Hash,
-    // This isn't needed for nostr as events are signed
-    pub nick_signature: String,
 }
 
 /// Maker pubkey
@@ -87,16 +94,13 @@ pub struct Fill {
 #[serde(rename = "pubkey")]
 pub struct Pubkey {
     pub mencpubkey: String,
-    pub nick_signature: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename = "tx")]
 pub struct Transaction {
     /// Transaction hex
-    pub tx: String,
-    // This isn't needed for nostr as events are signed
-    pub nick_signature: String,
+    pub psbt: PartiallySignedTransaction,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -104,7 +108,7 @@ pub struct Transaction {
 pub struct IoAuth {
     // TODO: Serialize as txid:vout
     #[serde(rename = "ulist")]
-    pub utxos: Vec<(Txid, u32)>,
+    pub utxos: Vec<(OutPoint, Option<Input>)>,
     pub maker_auth_pub: String,
     #[serde(rename = "coinjoinA")]
     pub coinjoin_address: Address,
@@ -112,15 +116,13 @@ pub struct IoAuth {
     pub change_address: Address,
     /// bitcoin signature of mencpubkey
     pub bitcoin_sig: String,
-    pub nick_signature: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename = "sig")]
 pub struct SignedTransaction {
     #[serde(rename = "sig")]
-    pub tx: Vec<u8>,
-    pub nick_signature: String,
+    pub psbt: PartiallySignedTransaction,
 }
 
 /// Possible messages that can be sent
@@ -161,13 +163,6 @@ pub enum NostrdizerMessageKind {
 pub struct NostrdizerMessage {
     pub event_type: NostrdizerMessageKind,
     pub event: NostrdizerMessages,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BitcoinCoreCreditals {
-    pub rpc_url: String,
-    pub rpc_username: String,
-    pub rpc_password: String,
 }
 
 /// Final CJ transaction info
@@ -212,4 +207,22 @@ pub struct AuthCommitment {
     pub commit: Hash,
     pub sig: Vec<u8>,
     pub e: Hash,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MakerConfig {
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    pub abs_fee: Amount,
+    pub rel_fee: f64,
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    pub minsize: Amount,
+    #[serde(default, with = "bitcoin::util::amount::serde::as_btc::opt")]
+    pub maxsize: Option<Amount>,
+    pub will_broadcast: bool,
+}
+
+pub struct TakerConfig {
+    pub cj_fee: CJFee,
+    pub mining_fee: MaxMineingFee,
+    pub minium_makers: usize,
 }

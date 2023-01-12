@@ -6,7 +6,10 @@ A [Nostr](https://github.com/nostr-protocol/nostr) client built to create Bitcoi
 Based on the [Joinmarket](https://github.com/JoinMarket-Org/joinmarket-clientserver) model where there is a maker and a taker. 
 A maker is always online available to take part in the transaction, and a taker who chooses when and what size of transaction to create.
 
-To incentivize running a maker the taker pays a small fee to the maker for their service. The Maker also has the benefit of gaining privacy from each transaction they participate in so they can choose to set a fee of zero to be more likely to be selected by the taker in a transaction.  
+To incentivize running a maker the taker pays a small fee to the maker for their service. The Maker also has the benefit of gaining privacy from each transaction they participate in so they can choose to set a fee of zero to be more likely to be selected by the taker in a transaction. 
+
+## State
+I'm currently in the process of changing from using bitcoincore-rpc to BDK, so there is quite a bit of dead or half finished code around, that I'm going to leave until I finish getting BDK to work. Using the bitcoincore-rpc a complete transaction can occur, however it doesn't not actually verify the transaction is correct (ie you don't spend to much on maker fees, the maker gets back what they put in). Since im planning to use BDK for this I'm not going to fix it and just bypass it as a proof of concept.  
 
 ---
 **This is Alpha level software with many things that need to be changed, added, improved and tested, please do not use on mainnet.**
@@ -34,8 +37,10 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 ### Todo
 - [ ] Update nostr_rust version
     Nostr_rust greater then 14 uses a newer version of secp256k1 that causes compatibility issues with version used in rust_bitcoin, should be fixed in next release of rust_bitcoin.
-    - [ ] Events should be verified
+    - [x] Events should be verified
 - [ ] Cleanup, add tests, and COMMENTS
+- [ ] Move as much code as possible to common not behind features
+ - [ ] BDK has rpc capablities might be better to use that
 - [x] Use Replaceable events for offers
 - [x] Delete events when cj completed
     - [x] Use ephemeral events for messages
@@ -47,13 +52,17 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
     - [x] Taker generates and sends Podle commitment
     - [x] Maker validates poodle commitment
     - [ ] Maker stores lists of used commits and checks it was not used before (this is what makes it useful)
-- [ ] Work out how to make interoperable with JM as a taker.
+        - [ ] Should these be gossiped?
+- ~~[ ] Work out how to make interoperable with JM as a taker.~~
     - [ ] Serialization of messages 
     - [ ] Many more ...
 - [ ] Use [nip-40](https://github.com/nostr-protocol/nips/blob/master/40.md) expiring events for offers
 - [ ] Fidelity Bond (it'll be a bit)
 - [ ] Add print outs 
 - [ ] Add Docs
+
+Working but should fix
+- [ ] I'm incositanct about where i loop to send messages, some send messages accept a vec of the peers and send the messages. some only accept on pub key and loop is in main.  This all should accept vec
 
 ### A Note on Forks
 My fork of [rust-bitcoin-rpc](https://github.com/rust-bitcoin/rust-bitcoincore-rpc) is required as a few functions are not merged upstream. 

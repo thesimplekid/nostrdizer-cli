@@ -4,6 +4,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    #[cfg(feature = "bitcoincore")]
     #[error("Bitcoin Rpc error: {}", _0)]
     BitcoinRpcError(bitcoincore_rpc::Error),
 
@@ -75,8 +76,16 @@ pub enum Error {
 
     #[error("Not enough makers responded")]
     MakersFailedToRespond,
+
+    #[cfg(feature = "bdk")]
+    #[error("BDK error: {}", _0)]
+    BDKError(bdk::Error),
+
+    #[error("DecodeError")]
+    DecodeError(String),
 }
 
+#[cfg(feature = "bitcoincore")]
 impl From<bitcoincore_rpc::Error> for Error {
     fn from(err: bitcoincore_rpc::Error) -> Self {
         Self::BitcoinRpcError(err)
@@ -135,5 +144,12 @@ impl From<NIP16Error> for Error {
 impl From<NIP9Error> for Error {
     fn from(err: NIP9Error) -> Self {
         Self::NIP9(err)
+    }
+}
+
+#[cfg(feature = "bdk")]
+impl From<bdk::Error> for Error {
+    fn from(err: bdk::Error) -> Self {
+        Self::BDKError(err)
     }
 }
