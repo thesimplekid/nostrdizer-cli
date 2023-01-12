@@ -10,7 +10,7 @@ use bitcoin::PrivateKey;
 use bitcoin_hashes::{sha256, Hash};
 use secp256k1::{PublicKey, Scalar, Secp256k1, SecretKey};
 
-use log::{debug, info};
+use log::debug;
 
 fn n() -> BigInt {
     "115792089237316195423570985008687907852837564279074904382605163141518161494337"

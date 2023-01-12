@@ -6,10 +6,8 @@ use std::{env, panic};
 use log::{debug, error, warn, LevelFilter};
 use nostrdizer::{
     errors::Error as NostrdizerError,
-    maker::{Config as MakerConfig, Maker},
     podle::verify_podle,
-    taker,
-    types::{Amount, BitcoinCoreCreditals},
+    types::{Amount, BitcoinCoreCreditals, Maker, MakerConfig, Taker},
 };
 
 use serde::{Deserialize, Serialize};
@@ -180,7 +178,7 @@ fn main() -> Result<()> {
 
     match &args.command {
         Commands::TestPoodle => {
-            let taker = taker::Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
+            let taker = Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
             let commit = taker.generate_podle()?;
 
             if let Err(_err) = verify_podle(255, commit.clone(), commit.commit) {
@@ -192,17 +190,17 @@ fn main() -> Result<()> {
             // println!("{:?}", num);
         }
         Commands::ListUnspent => {
-            let mut taker = taker::Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
+            let mut taker = Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
             let unspent = taker.get_unspent();
             println!("{:#?}", unspent);
         }
         Commands::GetEligibleBalance => {
-            let mut taker = taker::Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
+            let mut taker = Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
             let balance = taker.get_eligible_balance()?;
             println!("{:?}", balance);
         }
         Commands::ListOffers => {
-            let mut taker = taker::Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
+            let mut taker = Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
             let offers = taker.get_offers()?;
             for (i, offer) in offers.iter().enumerate() {
                 println!("Offer {}: {:?}", i, offer);
@@ -212,7 +210,7 @@ fn main() -> Result<()> {
             send_amount,
             number_of_makers,
         } => {
-            let mut taker = taker::Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
+            let mut taker = Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
 
             let number_of_makers = match number_of_makers {
                 Some(num) => *num,

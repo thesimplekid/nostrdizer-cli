@@ -6,7 +6,10 @@ A [Nostr](https://github.com/nostr-protocol/nostr) client built to create Bitcoi
 Based on the [Joinmarket](https://github.com/JoinMarket-Org/joinmarket-clientserver) model where there is a maker and a taker. 
 A maker is always online available to take part in the transaction, and a taker who chooses when and what size of transaction to create.
 
-To incentivize running a maker the taker pays a small fee to the maker for their service. The Maker also has the benefit of gaining privacy from each transaction they participate in so they can choose to set a fee of zero to be more likely to be selected by the taker in a transaction.  
+To incentivize running a maker the taker pays a small fee to the maker for their service. The Maker also has the benefit of gaining privacy from each transaction they participate in so they can choose to set a fee of zero to be more likely to be selected by the taker in a transaction. 
+
+## State
+Working on implementing BDK the idea is to have the options between backends taking advantage of rust features. 
 
 ---
 **This is Alpha level software with many things that need to be changed, added, improved and tested, please do not use on mainnet.**
@@ -34,8 +37,9 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 ### Todo
 - [ ] Update nostr_rust version
     Nostr_rust greater then 14 uses a newer version of secp256k1 that causes compatibility issues with version used in rust_bitcoin, should be fixed in next release of rust_bitcoin.
-    - [ ] Events should be verified
+    - [x] Events should be verified
 - [ ] Cleanup, add tests, and COMMENTS
+- [ ] Move as much code as possible to common not behind features
 - [x] Use Replaceable events for offers
 - [x] Delete events when cj completed
     - [x] Use ephemeral events for messages
@@ -47,7 +51,8 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
     - [x] Taker generates and sends Podle commitment
     - [x] Maker validates poodle commitment
     - [ ] Maker stores lists of used commits and checks it was not used before (this is what makes it useful)
-- [ ] Work out how to make interoperable with JM as a taker.
+        - [ ] Should these be gossiped?
+- ~~[ ] Work out how to make interoperable with JM as a taker.~~
     - [ ] Serialization of messages 
     - [ ] Many more ...
 - [ ] Use [nip-40](https://github.com/nostr-protocol/nips/blob/master/40.md) expiring events for offers

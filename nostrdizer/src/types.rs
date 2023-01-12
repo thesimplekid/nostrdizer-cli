@@ -1,8 +1,13 @@
 pub use bitcoin::Amount;
 use bitcoin::{Address, SignedAmount, Txid};
 use bitcoin_hashes::sha256::Hash;
+use bitcoincore_rpc::Client as RPCClient;
 use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
+
+use bitcoin_hashes::sha256;
+
+use nostr_rust::{nostr_client::Client as NostrClient, Identity};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NostrdizerOffer {
@@ -32,8 +37,6 @@ pub struct RelOffer {
     pub txfee: Amount,
     /// CJ Fee maker expects
     pub cjfee: f64,
-    // This isn't needed for nostr as events are signed
-    pub nick_signature: String,
 }
 
 /// Maker Absolute offer
@@ -55,8 +58,6 @@ pub struct AbsOffer {
     /// CJ Fee maker expects
     #[serde(with = "bitcoin::util::amount::serde::as_sat")]
     pub cjfee: Amount,
-    // This isn't needed for nostr as events are signed
-    pub nick_signature: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -78,8 +79,6 @@ pub struct Fill {
     pub tencpubkey: String,
     /// Used for Poodle Hash of P2
     pub commitment: Hash,
-    // This isn't needed for nostr as events are signed
-    pub nick_signature: String,
 }
 
 /// Maker pubkey
@@ -87,7 +86,6 @@ pub struct Fill {
 #[serde(rename = "pubkey")]
 pub struct Pubkey {
     pub mencpubkey: String,
-    pub nick_signature: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -95,8 +93,6 @@ pub struct Pubkey {
 pub struct Transaction {
     /// Transaction hex
     pub tx: String,
-    // This isn't needed for nostr as events are signed
-    pub nick_signature: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -112,7 +108,6 @@ pub struct IoAuth {
     pub change_address: Address,
     /// bitcoin signature of mencpubkey
     pub bitcoin_sig: String,
-    pub nick_signature: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -120,7 +115,6 @@ pub struct IoAuth {
 pub struct SignedTransaction {
     #[serde(rename = "sig")]
     pub tx: Vec<u8>,
-    pub nick_signature: String,
 }
 
 /// Possible messages that can be sent
@@ -163,6 +157,7 @@ pub struct NostrdizerMessage {
     pub event: NostrdizerMessages,
 }
 
+#[cfg(feature = "bitcoincore")]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BitcoinCoreCreditals {
     pub rpc_url: String,
@@ -212,4 +207,44 @@ pub struct AuthCommitment {
     pub commit: Hash,
     pub sig: Vec<u8>,
     pub e: Hash,
+}
+
+#[cfg(feature = "bitcoincore")]
+pub struct Maker {
+    pub identity: Identity,
+    pub config: MakerConfig,
+    pub nostr_client: NostrClient,
+    pub rpc_client: RPCClient,
+    pub fill_commitment: Option<sha256::Hash>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MakerConfig {
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    pub abs_fee: Amount,
+    pub rel_fee: f64,
+    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    pub minsize: Amount,
+    #[serde(default, with = "bitcoin::util::amount::serde::as_btc::opt")]
+    pub maxsize: Option<Amount>,
+    pub will_broadcast: bool,
+}
+
+pub struct TakerConfig {
+    pub cj_fee: CJFee,
+    pub mining_fee: MaxMineingFee,
+    pub minium_makers: usize,
+}
+
+#[cfg(feature = "bitcoincore")]
+pub struct Taker {
+    pub identity: Identity,
+    pub config: TakerConfig,
+    pub nostr_client: NostrClient,
+    pub rpc_client: RPCClient,
+}
+
+pub enum Role {
+    Maker(CJFee, Amount, Option<Amount>),
+    Taker(CJFee, MaxMineingFee),
 }
