@@ -22,7 +22,7 @@ use bitcoincore_rpc_json::{
 use log::debug;
 use std::collections::HashMap;
 use std::str::FromStr;
-#[cfg(feature = "bitcoincore")]
+
 pub struct Taker {
     pub identity: Identity,
     pub config: TakerConfig,
@@ -31,7 +31,6 @@ pub struct Taker {
 }
 
 impl Taker {
-    #[cfg(feature = "bitcoincore")]
     pub fn new(
         priv_key: Option<String>,
         relay_urls: Vec<&str>,
@@ -118,9 +117,9 @@ impl Taker {
                 input
                     .utxos
                     .iter()
-                    .map(|(txid, vout)| CreateRawTransactionInput {
-                        txid: *txid,
-                        vout: *vout,
+                    .map(|outpoint| CreateRawTransactionInput {
+                        txid: outpoint.0.txid,
+                        vout: outpoint.0.vout,
                         sequence: None,
                     })
                     .collect::<Vec<CreateRawTransactionInput>>()
@@ -132,14 +131,13 @@ impl Taker {
             let maker_input_val = maker_input.utxos.iter().fold(Amount::ZERO, |val, input| {
                 val + self
                     .rpc_client
-                    .get_tx_out(&input.0, input.1, Some(false))
+                    .get_tx_out(&input.0.txid, input.0.vout, Some(false))
                     .unwrap()
                     .unwrap()
                     .value
             });
             outputs.insert(maker_input.coinjoin_address.to_string(), send_amount);
 
-            // Gets a makers offer from Hashmap in order to calculate their required fee
             let maker_fee = offer.cjfee; // Amount::from_sat(
             let change_value = maker_input_val - send_amount + maker_fee;
             outputs.insert(maker_input.change_address.to_string(), change_value);

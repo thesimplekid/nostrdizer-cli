@@ -9,12 +9,13 @@ use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClien
 
 use log::debug;
 
+use bitcoin::blockdata::transaction::OutPoint;
 use bitcoin::{Amount, Denomination};
 use bitcoin_hashes::sha256;
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::SignRawTransactionResult;
+use std::str::FromStr;
 
-#[cfg(feature = "bitcoincore")]
 pub struct Maker {
     pub identity: Identity,
     pub config: MakerConfig,
@@ -31,8 +32,6 @@ impl Maker {
         config: &mut MakerConfig,
         bitcoin_core_creds: BitcoinCoreCreditals,
     ) -> Result<Self, Error> {
-        use std::str::FromStr;
-
         let priv_key = match priv_key {
             Some(key) => key,
             None => {
@@ -99,7 +98,7 @@ impl Maker {
         let mut inputs = vec![];
         let mut value: Amount = Amount::ZERO;
         for utxo in unspent {
-            let input = (utxo.txid, utxo.vout);
+            let input = OutPoint::new(utxo.txid, utxo.vout);
 
             inputs.push(input);
             value += utxo.amount;

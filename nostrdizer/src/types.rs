@@ -1,5 +1,5 @@
 pub use bitcoin::Amount;
-use bitcoin::{Address, SignedAmount, Txid};
+use bitcoin::{Address, OutPoint, SignedAmount, Txid};
 use bitcoin_hashes::sha256::Hash;
 use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
@@ -95,7 +95,7 @@ pub struct Transaction {
 pub struct IoAuth {
     // TODO: Serialize as txid:vout
     #[serde(rename = "ulist")]
-    pub utxos: Vec<(Txid, u32)>,
+    pub utxos: Vec<OutPoint>,
     pub maker_auth_pub: String,
     #[serde(rename = "coinjoinA")]
     pub coinjoin_address: Address,
