@@ -1,19 +1,30 @@
 use crate::{
-    bitcoincore::maker::Maker,
     errors::Error,
     podle,
     types::{
         AbsOffer, AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind,
-        NostrdizerMessages, Offer, Pubkey, RelOffer,
+        NostrdizerMessages, Offer, Pubkey, RelOffer, ABS_OFFER, AUTH, FILL, IOAUTH, REL_OFFER,
+        TRANSACTION,
     },
     utils::{self, decrypt_message},
 };
 
-use nostr_rust::{events::Event, req::ReqFilter, utils::get_timestamp};
+use bitcoin::psbt::PartiallySignedTransaction;
+use nostr_rust::{
+    events::{Event, EventPrepare},
+    req::ReqFilter,
+    utils::get_timestamp,
+};
 
 pub use bitcoin::Amount;
 
 use serde_json::Value;
+
+#[cfg(all(feature = "bitcoincore", not(feature = "bdk")))]
+use crate::bitcoincore::maker::Maker;
+
+#[cfg(all(feature = "bdk", not(feature = "bitcoincore")))]
+use crate::bdk::maker::Maker;
 
 use rand::{thread_rng, Rng};
 
@@ -72,7 +83,7 @@ impl Maker {
         let filter = ReqFilter {
             ids: None,
             authors: Some(vec![self.identity.public_key_str.clone()]),
-            kinds: Some(vec![10124]),
+            kinds: Some(vec![REL_OFFER]),
             e: None,
             p: None,
             since: None,
@@ -98,7 +109,7 @@ impl Maker {
         let filter = ReqFilter {
             ids: None,
             authors: Some(vec![self.identity.public_key_str.clone()]),
-            kinds: Some(vec![10124]),
+            kinds: Some(vec![REL_OFFER, ABS_OFFER]),
             e: None,
             p: None,
             since: None,
@@ -107,9 +118,8 @@ impl Maker {
         };
 
         if let Ok(events) = self.nostr_client.get_events_of(vec![filter]) {
-            if !events.is_empty() {
-                let offer_event = events.last().unwrap();
-                let event_id = &offer_event.id;
+            for event in events {
+                let event_id = &event.id;
                 self.nostr_client
                     .delete_event(&self.identity, event_id, 0)?;
             }
@@ -122,7 +132,7 @@ impl Maker {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20125]),
+            kinds: Some(vec![FILL]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -141,7 +151,7 @@ impl Maker {
                     }
 
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
-                        if event.kind == 20125
+                        if event.kind == FILL
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::Fill(fill_offer) = decrypt_message(
@@ -170,7 +180,7 @@ impl Maker {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20127]),
+            kinds: Some(vec![AUTH]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -190,7 +200,7 @@ impl Maker {
                     }
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
                         if event.verify().is_ok()
-                            && event.kind == 20127
+                            && event.kind == AUTH
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::Auth(auth_commitment) = decrypt_message(
@@ -232,13 +242,26 @@ impl Maker {
         let encypted_content =
             utils::encrypt_message(&self.identity.secret_key, peer_pub_key, &message)?;
 
+        let event = EventPrepare {
+            pub_key: self.identity.public_key_str.clone(),
+            created_at: get_timestamp(),
+            kind: IOAUTH,
+            tags: vec![vec!["p".to_string(), peer_pub_key.to_string()]],
+            content: encypted_content,
+        }
+        .to_event(&self.identity, 0);
+
+        self.nostr_client.publish_event(&event)?;
+
+        /*
         self.nostr_client.publish_ephemeral_event(
             &self.identity,
-            128,
+            IOAUTH,
             &encypted_content,
             &[vec!["p".to_string(), peer_pub_key.to_string()]],
             0,
         )?;
+        */
 
         Ok(())
     }
@@ -268,11 +291,11 @@ impl Maker {
     }
 
     /// Maker waits for unsigned CJ transaction
-    pub fn get_unsigned_cj_transaction(&mut self) -> Result<String, Error> {
+    pub fn get_unsigned_cj_transaction(&mut self) -> Result<PartiallySignedTransaction, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20129]),
+            kinds: Some(vec![TRANSACTION]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -292,7 +315,7 @@ impl Maker {
                     }
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
                         if event.verify().is_ok()
-                            && event.kind == 20129
+                            && event.kind == TRANSACTION
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::UnsignedCJ(unsigned_tx_hex) =
@@ -304,7 +327,7 @@ impl Maker {
                                 .event
                             {
                                 self.nostr_client.unsubscribe(&subscription_id)?;
-                                return Ok(unsigned_tx_hex.tx);
+                                return Ok(unsigned_tx_hex.psbt);
                             }
                         }
                     }

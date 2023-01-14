@@ -1,3 +1,5 @@
+#[cfg(feature = "bdk")]
+pub mod bdk;
 #[cfg(feature = "bitcoincore")]
 pub mod bitcoincore;
 pub mod errors;

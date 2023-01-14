@@ -1,20 +1,39 @@
 use crate::{
-    bitcoincore::taker::Taker,
     errors::Error,
     types::{
         AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages,
-        NostrdizerOffer, Offer, Transaction,
+        NostrdizerOffer, Offer, TakerConfig, Transaction, VerifyCJInfo, AUTH, FILL, IOAUTH, PUBKEY,
+        SIGNED_TRANSACTION, TRANSACTION,
     },
     utils::{self, decrypt_message},
 };
 
-use bitcoin::{Amount, Denomination};
+use crate::bitcoincore::utils::{get_input_value, get_output_value};
+use bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination};
 
-use nostr_rust::{events::Event, req::ReqFilter, utils::get_timestamp};
+#[cfg(feature = "bdk")]
+use bdk::{database::AnyDatabase, Wallet};
+use bitcoin_hashes::{sha256, Hash};
+#[cfg(feature = "bitcoincore")]
+use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
+use log::debug;
+
+#[cfg(all(feature = "bitcoincore", not(feature = "bdk")))]
+use crate::bitcoincore::taker::Taker;
+
+#[cfg(all(feature = "bdk", not(feature = "bitcoincore")))]
+use crate::bdk::taker::Taker;
+
+use nostr_rust::{
+    events::{Event, EventPrepare},
+    req::ReqFilter,
+    utils::get_timestamp,
+};
+use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
 
 use serde_json::Value;
-use std::collections::HashMap;
 use std::collections::HashSet;
+use std::{collections::HashMap, f64::consts::E};
 
 impl Taker {
     // TODO: This doesnt actually do anything
@@ -26,7 +45,7 @@ impl Taker {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20126]),
+            kinds: Some(vec![PUBKEY]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -46,7 +65,7 @@ impl Taker {
                     }
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
                         if event.verify().is_ok()
-                            && event.kind == 20126
+                            && event.kind == PUBKEY
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::PubKey(_pubkey) = decrypt_message(
@@ -69,12 +88,24 @@ impl Taker {
         }
     }
 
+    /*
+    pub fn verify_transaction(
+        psbt: PartiallySignedTransaction,
+        send_amount: &Amount,
+    ) -> Result<VerifyCJInfo, Error> {
+        todo!();
+    }
+    */
+
     /// Gets signed peer tx
-    pub fn get_signed_peer_transaction(&mut self, peer_count: usize) -> Result<String, Error> {
+    pub fn get_signed_peer_transaction(
+        &mut self,
+        peer_count: usize,
+    ) -> Result<Vec<PartiallySignedTransaction>, Error> {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20130]),
+            kinds: Some(vec![SIGNED_TRANSACTION]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -95,7 +126,7 @@ impl Taker {
 
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
                         if event.verify().is_ok()
-                            && event.kind == 20130
+                            && event.kind == SIGNED_TRANSACTION
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::SignedCJ(signed_tx) = decrypt_message(
@@ -109,15 +140,22 @@ impl Taker {
                                     .insert(event.pub_key.to_string(), signed_tx);
 
                                 if peer_signed_transaction.len() >= peer_count {
+                                    /*
                                     let txs: Vec<String> = peer_signed_transaction
                                         .values()
                                         .map(|p| hex::encode(p.tx.clone()))
                                         .collect();
 
-                                    let combined_transaction =
-                                        self.combine_raw_transaction(&txs)?;
+                                    let combined_transaction = "".to_string();
+                                    // self.combine_raw_transaction(&txs)?;
+                                        */
 
-                                    return Ok(combined_transaction);
+                                    let psbts = peer_signed_transaction
+                                        .values()
+                                        .map(|p| p.psbt.clone())
+                                        .collect();
+
+                                    return Ok(psbts);
                                 }
                             }
                         }
@@ -137,7 +175,7 @@ impl Taker {
         let filter = ReqFilter {
             ids: None,
             authors: None,
-            kinds: Some(vec![20128]),
+            kinds: Some(vec![IOAUTH]),
             e: None,
             p: Some(vec![self.identity.public_key_str.clone()]),
             since: None,
@@ -160,7 +198,7 @@ impl Taker {
 
                     if let Ok(event) = serde_json::from_value::<Event>(event[2].clone()) {
                         if event.verify().is_ok()
-                            && event.kind == 20128
+                            && event.kind == IOAUTH
                             && event.tags[0].contains(&self.identity.public_key_str)
                         {
                             if let NostrdizerMessages::MakerInputs(maker_input) = decrypt_message(
@@ -215,8 +253,10 @@ impl Taker {
         matching_offers.retain(|o| unique_makers.contains(&o.maker));
 
         let mut last_peer = 0;
-        let commitment = self.generate_podle()?;
-        let commitment = commitment.commit; // sha256::Hash::hash(commitment.p2.to_string().as_bytes());
+        //let commitment = self.generate_podle()?;
+        //let commitment = commitment.commit; // sha256::Hash::hash(commitment.p2.to_string().as_bytes());
+        // TODO: Need to get the priv key from
+        let commitment = sha256::Hash::hash("".as_bytes());
 
         let mut matched_peers = vec![];
         for peer in matching_offers.iter_mut() {
@@ -231,9 +271,20 @@ impl Taker {
                 event_type: NostrdizerMessageKind::FillOffer,
                 event: NostrdizerMessages::Fill(fill_offer),
             };
+            debug!("{:?}", message);
             let encypted_content =
                 utils::encrypt_message(&self.identity.secret_key, &peer.maker, &message)?;
 
+            let event = EventPrepare {
+                pub_key: self.identity.public_key_str.clone(),
+                created_at: get_timestamp(),
+                kind: FILL,
+                tags: vec![vec!["p".to_string(), peer.maker.to_string()]],
+                content: encypted_content,
+            }
+            .to_event(&self.identity, 0);
+
+            /*
             self.nostr_client.publish_ephemeral_event(
                 &self.identity,
                 125,
@@ -241,6 +292,8 @@ impl Taker {
                 &[vec!["p".to_string(), peer.maker.to_string()]],
                 0,
             )?;
+            */
+            self.nostr_client.publish_event(&event)?;
             matched_peers.push(peer.clone());
             last_peer += 1;
             if last_peer >= peer_count {
@@ -251,6 +304,7 @@ impl Taker {
         Ok(matched_peers)
     }
 
+    /// Publish the podle commitment
     pub fn send_auth_message(
         &mut self,
         auth_commitment: AuthCommitment,
@@ -264,7 +318,18 @@ impl Taker {
         for offer in matched_offers {
             let encypted_content =
                 utils::encrypt_message(&self.identity.secret_key, &offer.maker, &message)?;
+            let event = EventPrepare {
+                pub_key: self.identity.public_key_str.clone(),
+                kind: AUTH,
+                created_at: get_timestamp(),
+                tags: vec![vec!["p".to_string(), offer.maker]],
+                content: encypted_content,
+            }
+            .to_event(&self.identity, 0);
 
+            self.nostr_client.publish_event(&event)?;
+
+            /*
             self.nostr_client.publish_ephemeral_event(
                 &self.identity,
                 127,
@@ -272,6 +337,7 @@ impl Taker {
                 &[vec!["p".to_string(), offer.maker]],
                 0,
             )?;
+            */
         }
         Ok(())
     }
@@ -328,18 +394,27 @@ impl Taker {
     pub fn send_unsigned_transaction(
         &mut self,
         peer_pub_key: &str,
-        tx_hex: &str,
+        psbt: &PartiallySignedTransaction,
     ) -> Result<(), Error> {
         let message = NostrdizerMessage {
             event_type: NostrdizerMessageKind::UnsignedCJ,
-            event: NostrdizerMessages::UnsignedCJ(Transaction {
-                tx: tx_hex.to_string(),
-            }),
+            event: NostrdizerMessages::UnsignedCJ(Transaction { psbt: psbt.clone() }),
         };
 
         let encrypted_content =
             utils::encrypt_message(&self.identity.secret_key, peer_pub_key, &message)?;
 
+        let event = EventPrepare {
+            pub_key: self.identity.public_key_str.clone(),
+            created_at: get_timestamp(),
+            kind: TRANSACTION,
+            tags: vec![vec!["p".to_string(), peer_pub_key.to_string()]],
+            content: encrypted_content,
+        }
+        .to_event(&self.identity, 0);
+
+        self.nostr_client.publish_event(&event)?;
+        /*
         self.nostr_client.publish_ephemeral_event(
             &self.identity,
             129,
@@ -347,6 +422,7 @@ impl Taker {
             &[vec!["p".to_string(), peer_pub_key.to_string()]],
             0,
         )?;
+        */
 
         Ok(())
     }

@@ -1,14 +1,13 @@
 use crate::errors::Error;
 
-use bitcoin::Amount;
+use bitcoin::{psbt::PartiallySignedTransaction, Amount};
 use bitcoincore_rpc::{Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::{
     GetRawTransactionResultVin, GetRawTransactionResultVout, ListUnspentResultEntry,
-    SignRawTransactionResult,
+    SignRawTransactionResult, WalletProcessPsbtResult,
 };
 
 /// Get output value of decoded tx
-#[cfg(feature = "bitcoincore")]
 pub fn get_output_value(
     vout: &[GetRawTransactionResultVout],
     rpc_client: &RPCClient,
@@ -29,89 +28,25 @@ pub fn get_output_value(
     Ok((output_value, my_output_value))
 }
 
-#[cfg(feature = "bitcoincore")]
 pub fn sign_tx_hex(
     unsigned_tx: &str,
     rpc_client: &RPCClient,
 ) -> Result<SignRawTransactionResult, Error> {
     Ok(rpc_client.sign_raw_transaction_with_wallet(unsigned_tx, None, None)?)
 }
-/*
-#[cfg(feature = "bitcoincore")]
-pub fn verify_transaction(
-    unsigned_tx: &str,
-    send_amount: Amount,
-    role: Role,
-    rpc_client: &RPCClient,
-) -> Result<VerifyCJInfo, Error> {
-    let decoded_transaction = rpc_client
-        .decode_raw_transaction(unsigned_tx, None)
-        .unwrap();
-    let (input_value, my_input_value) = get_input_value(decoded_transaction.vin, rpc_client)?;
-    let (output_value, my_output_value) = get_output_value(decoded_transaction.vout, rpc_client)?;
-
-    let mining_fee = (input_value - output_value).to_signed()?;
-
-    match role {
-        Role::Maker(cj_fee, min_size, max_size) => {
-            let maker_fee = my_output_value.to_signed()? - my_input_value.to_signed()?;
-            let abs_fee_check = maker_fee.ge(&cj_fee.abs_fee.to_signed()?);
-            let fee_as_percent = maker_fee.to_float_in(Denomination::Satoshi)
-                / send_amount.to_float_in(Denomination::Satoshi);
-
-            // Verify maker gets > set fee
-            let rel_fee_check = fee_as_percent.ge(&cj_fee.rel_fee);
-
-            // Max send amount check
-            let max_amount_check = match max_size {
-                Some(max_size) => send_amount <= max_size,
-                None => true,
-            };
-
-            Ok(VerifyCJInfo {
-                mining_fee,
-                maker_fee,
-                verifyed: abs_fee_check
-                    && rel_fee_check
-                    && max_amount_check
-                    && send_amount.ge(&min_size),
-            })
-        }
-        Role::Taker(cj_fee, max_mineing_fee) => {
-            let maker_fee: SignedAmount =
-                my_input_value.to_signed()? - my_output_value.to_signed()? - mining_fee;
-            let abs_fee_check = maker_fee.lt(&cj_fee.abs_fee.to_signed()?);
-            let fee_as_percent = maker_fee.to_float_in(Denomination::Satoshi)
-                / send_amount.to_float_in(Denomination::Satoshi);
-
-            let rel_fee_check = fee_as_percent.lt(&cj_fee.rel_fee);
-            Ok(VerifyCJInfo {
-                mining_fee,
-                maker_fee,
-                verifyed: abs_fee_check
-                    && rel_fee_check
-                    && mining_fee.lt(&max_mineing_fee.abs_fee.to_signed()?),
-            })
-        }
-    }
-}
-*/
 
 /// Gets balance eligible for coinjoin
 // Coins with 2 or more confirmations
-#[cfg(feature = "bitcoincore")]
 pub fn get_eligible_balance(rpc_client: &RPCClient) -> Result<Amount, Error> {
     Ok(rpc_client.get_balance(Some(2), Some(false))?)
 }
 
 /// Gets unspent UTXOs
-#[cfg(feature = "bitcoincore")]
 pub fn get_unspent(rpc_client: &RPCClient) -> Result<Vec<ListUnspentResultEntry>, Error> {
     Ok(rpc_client.list_unspent(None, None, None, Some(false), None)?)
 }
 
 /// Get mining fee to get into the next block
-#[cfg(feature = "bitcoincore")]
 pub fn get_mining_fee(rpc_client: &RPCClient) -> Result<Amount, Error> {
     let fee = rpc_client.estimate_smart_fee(1, None)?;
 
@@ -123,7 +58,6 @@ pub fn get_mining_fee(rpc_client: &RPCClient) -> Result<Amount, Error> {
 }
 
 /// Get the input value of decoded tx
-#[cfg(feature = "bitcoincore")]
 pub fn get_input_value(
     vin: &[GetRawTransactionResultVin],
     rpc_client: &RPCClient,
@@ -152,4 +86,14 @@ pub fn get_input_value(
     }
 
     Ok((input_value, my_input_value))
+}
+
+/// Maker sign psbt
+pub fn sign_psbt(
+    unsigned_psbt: &PartiallySignedTransaction,
+    rpc_client: &RPCClient,
+) -> Result<WalletProcessPsbtResult, Error> {
+    let signed_psbt =
+        rpc_client.wallet_process_psbt(&unsigned_psbt.to_string(), Some(true), None, None)?;
+    Ok(signed_psbt)
 }

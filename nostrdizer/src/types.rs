@@ -1,8 +1,21 @@
 pub use bitcoin::Amount;
-use bitcoin::{Address, OutPoint, SignedAmount, Txid};
+use bitcoin::{
+    psbt::{Input, PartiallySignedTransaction},
+    Address, OutPoint, SignedAmount, Txid,
+};
 use bitcoin_hashes::sha256::Hash;
 use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
+
+// Nostr Message Kinds
+pub const ABS_OFFER: u16 = 10123;
+pub const REL_OFFER: u16 = 10124;
+pub const FILL: u16 = 125;
+pub const PUBKEY: u16 = 126;
+pub const AUTH: u16 = 127;
+pub const IOAUTH: u16 = 128;
+pub const TRANSACTION: u16 = 129;
+pub const SIGNED_TRANSACTION: u16 = 130;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NostrdizerOffer {
@@ -87,7 +100,7 @@ pub struct Pubkey {
 #[serde(rename = "tx")]
 pub struct Transaction {
     /// Transaction hex
-    pub tx: String,
+    pub psbt: PartiallySignedTransaction,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -95,7 +108,7 @@ pub struct Transaction {
 pub struct IoAuth {
     // TODO: Serialize as txid:vout
     #[serde(rename = "ulist")]
-    pub utxos: Vec<OutPoint>,
+    pub utxos: Vec<(OutPoint, Option<Input>)>,
     pub maker_auth_pub: String,
     #[serde(rename = "coinjoinA")]
     pub coinjoin_address: Address,
@@ -109,7 +122,7 @@ pub struct IoAuth {
 #[serde(rename = "sig")]
 pub struct SignedTransaction {
     #[serde(rename = "sig")]
-    pub tx: Vec<u8>,
+    pub psbt: PartiallySignedTransaction,
 }
 
 /// Possible messages that can be sent

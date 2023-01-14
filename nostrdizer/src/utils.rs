@@ -1,12 +1,16 @@
 use crate::errors::Error;
 use crate::types::{
     NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Offer, SignedTransaction,
+    ABS_OFFER, REL_OFFER, SIGNED_TRANSACTION,
 };
 
+use bitcoin::psbt::PartiallySignedTransaction;
+use nostr_rust::events::EventPrepare;
 use nostr_rust::{
     nips::nip4::{decrypt, encrypt},
     nostr_client::Client as NostrClient,
     req::ReqFilter,
+    utils::get_timestamp,
     Identity,
 };
 
@@ -18,7 +22,7 @@ pub fn get_offers(nostr_client: &mut NostrClient) -> Result<Vec<(String, Offer)>
     let filter = ReqFilter {
         ids: None,
         authors: None,
-        kinds: Some(vec![10123, 10124]),
+        kinds: Some(vec![ABS_OFFER, REL_OFFER]),
         e: None,
         p: None,
         since: None,
@@ -43,15 +47,27 @@ pub fn get_offers(nostr_client: &mut NostrClient) -> Result<Vec<(String, Offer)>
 pub fn send_signed_tx(
     identity: &Identity,
     peer_pub_key: &str,
-    tx: &[u8],
+    psbt: PartiallySignedTransaction,
     nostr_client: &mut NostrClient,
 ) -> Result<(), Error> {
     let event = NostrdizerMessage {
         event_type: NostrdizerMessageKind::SignedCJ,
-        event: NostrdizerMessages::SignedCJ(SignedTransaction { tx: tx.to_vec() }),
+        event: NostrdizerMessages::SignedCJ(SignedTransaction { psbt }),
     };
-
     let encrypt_message = encrypt_message(&identity.secret_key, peer_pub_key, &event)?;
+
+    let event = EventPrepare {
+        pub_key: identity.public_key_str.clone(),
+        created_at: get_timestamp(),
+        kind: SIGNED_TRANSACTION,
+        tags: vec![vec!["p".to_string(), peer_pub_key.to_string()]],
+        content: encrypt_message,
+    }
+    .to_event(&identity, 0);
+
+    nostr_client.publish_event(&event)?;
+    /*
+
     nostr_client.publish_ephemeral_event(
         identity,
         130,
@@ -59,6 +75,7 @@ pub fn send_signed_tx(
         &[vec!["p".to_string(), peer_pub_key.to_string()]],
         0,
     )?;
+    */
 
     Ok(())
 }
