@@ -9,7 +9,7 @@ A maker is always online available to take part in the transaction, and a taker 
 To incentivize running a maker the taker pays a small fee to the maker for their service. The Maker also has the benefit of gaining privacy from each transaction they participate in so they can choose to set a fee of zero to be more likely to be selected by the taker in a transaction. 
 
 ## State
-I'm currently in the process of changing from using bitcoincore-rpc to BDK, so there is quite a bit of dead or half finished code around, that I'm going to leave until I finish getting BDK to work. Using the bitcoincore-rpc a complete transaction can occur, however it doesn't not actually verify the transaction is correct (ie you don't spend to much on maker fees, the maker gets back what they put in). Since im planning to use BDK for this I'm not going to fix it and just bypass it as a proof of concept.  
+I'm currently in the process of changing from using bitcoincore-rpc to BDK, so there is quite a bit of dead or half finished code around, that I'm going to leave until I finish getting BDK to work. Using the bitcoincore-rpc a complete transaction can occur, however it does not actually verify the transaction is correct (ie you don't spend to much on maker fees, the maker gets back what they put in). Since im planning to use BDK for this I'm not going to fix it and just bypass it as a proof of concept.  
 
 ---
 **This is Alpha level software with many things that need to be changed, added, improved and tested, please do not use on mainnet.**
