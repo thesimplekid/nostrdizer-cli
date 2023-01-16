@@ -1,4 +1,4 @@
-use crate::{
+use super::{
     errors::Error,
     types::{
         AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages,
@@ -8,7 +8,7 @@ use crate::{
     utils::{self, decrypt_message},
 };
 
-use bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination};
+use bdk::bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination};
 
 #[cfg(feature = "bdk")]
 use bitcoin_hashes::{sha256, Hash};

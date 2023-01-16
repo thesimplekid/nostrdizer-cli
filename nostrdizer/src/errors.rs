@@ -1,4 +1,4 @@
-use bitcoin::util::amount::ParseAmountError;
+use bdk::bitcoin::util::amount::ParseAmountError;
 use nostr_rust::nips::{nip16::NIP16Error, nip9::NIP9Error};
 use thiserror::Error;
 
@@ -27,7 +27,7 @@ pub enum Error {
     NIP9(NIP9Error),
 
     #[error("Bitcoin Sep256k1 error")]
-    BitcoinSecpError(bitcoin::secp256k1::Error),
+    BitcoinSecpError(bdk::bitcoin::secp256k1::Error),
 
     #[error("Sep256k1 error")]
     Secp256k1Error(secp256k1::Error),
@@ -116,8 +116,8 @@ impl From<nostr_rust::nostr_client::ClientError> for Error {
     }
 }
 
-impl From<bitcoin::secp256k1::Error> for Error {
-    fn from(err: bitcoin::secp256k1::Error) -> Self {
+impl From<bdk::bitcoin::secp256k1::Error> for Error {
+    fn from(err: bdk::bitcoin::secp256k1::Error) -> Self {
         Self::BitcoinSecpError(err)
     }
 }

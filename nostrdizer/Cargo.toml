@@ -6,7 +6,7 @@ edition = "2021"
 [features]
 # default = ["bitcoincore"]
 bitcoincore = ["bitcoincore-rpc", "bitcoincore-rpc-json"]
-bdk = ["dep:bdk"]
+bdk = []
 
 [dependencies]
 chrono = { version = "0.4.22", features = ["serde"] }
@@ -18,7 +18,7 @@ serde_json = "1.0.87"
 nostr_rust = "0.14.0"
 thiserror = "1"
 url = "2"
-bitcoin = { version = "0.29.2", features = ["base64"] }
+#bitcoin = { version = "0.29.2", features = ["base64"] }
 bitcoin_hashes = "0.11.0"
 rand = "0.8.5"
 log = "0.4.17"
@@ -27,7 +27,7 @@ hex = "0.4.3"
 num-bigint = "0.4.3"
 base64 = "^0.13"
 
-bdk = {version = "0.26.0", optional = true, features = ["key-value-db", "keys-bip39", "rpc"] }
+bdk = {version = "0.26.0", features = ["key-value-db", "keys-bip39", "rpc"] }
 
 # bitcoincore-rpc =  { path = "../../rust-bitcoincore-rpc/client" } 
 # bitcoincore-rpc-json = { path = "../../rust-bitcoincore-rpc/json"} 

@@ -1,25 +1,30 @@
-use bdk::blockchain::ConfigurableBlockchain;
-use bdk::blockchain::{
-    rpc::{Auth, RpcBlockchain, RpcConfig},
-    AnyBlockchain,
-};
-use bdk::database::{AnyDatabase, MemoryDatabase};
-use bdk::wallet::AddressIndex;
-use bdk::{LocalUtxo, SyncOptions, Wallet};
-use bitcoin::psbt::Input;
-use bitcoin::{Amount, TxOut};
-
-use bdk::bitcoin::secp256k1::Secp256k1;
-use bdk::bitcoin::util::bip32::{DerivationPath, KeySource};
-use bdk::bitcoin::Network;
-use bdk::keys::bip39::{Language, Mnemonic, WordCount};
-use bdk::keys::DescriptorKey::Secret;
-use bdk::keys::{DerivableKey, DescriptorKey, ExtendedKey, GeneratableKey, GeneratedKey};
-use bdk::miniscript::miniscript::Segwitv0;
-use std::str::FromStr;
-
 use crate::errors::Error;
-use crate::types::RpcInfo;
+use crate::types::{Amount, RpcInfo};
+
+use bdk::{
+    bitcoin::{
+        psbt::Input,
+        secp256k1::Secp256k1,
+        util::bip32::{DerivationPath, KeySource},
+        Network, TxOut,
+    },
+    blockchain::{
+        rpc::{Auth, RpcBlockchain, RpcConfig},
+        AnyBlockchain, ConfigurableBlockchain,
+    },
+    database::{AnyDatabase, MemoryDatabase},
+    keys::{
+        bip39::{Language, Mnemonic, WordCount},
+        DerivableKey, DescriptorKey,
+        DescriptorKey::Secret,
+        ExtendedKey, GeneratableKey, GeneratedKey,
+    },
+    miniscript::miniscript::Segwitv0,
+    wallet::AddressIndex,
+    LocalUtxo, SyncOptions, Wallet,
+};
+
+use std::str::FromStr;
 
 pub fn new_rpc_blockchain(blockchain_config: RpcInfo) -> Result<AnyBlockchain, Error> {
     // let client = Client::new("localhost:50000").unwrap();
@@ -47,7 +52,7 @@ pub fn new_wallet(
     let wallet = Wallet::new(
         &descriptor.0,
         Some(&descriptor.1),
-        bitcoin::Network::Regtest,
+        bdk::bitcoin::Network::Regtest,
         AnyDatabase::Memory(MemoryDatabase::new()),
     )?;
 

@@ -1,20 +1,25 @@
 use super::utils::{
     get_input_value, get_output_value, get_unspent, new_rpc_blockchain, new_wallet,
 };
-use crate::errors::Error;
-use crate::types::{
-    AuthCommitment, BlockchainConfig, CJFee, IoAuth, MaxMineingFee, NostrdizerOffer, TakerConfig,
-    VerifyCJInfo, DUST, MAX_FEE,
+use crate::{
+    errors::Error,
+    types::{
+        AuthCommitment, BlockchainConfig, CJFee, IoAuth, MaxMineingFee, NostrdizerOffer,
+        TakerConfig, VerifyCJInfo, DUST, MAX_FEE,
+    },
 };
-use bdk::blockchain::{AnyBlockchain, Blockchain};
-use bdk::wallet::{tx_builder::TxOrdering, AddressIndex};
-use bdk::KeychainKind;
-use bdk::{database::AnyDatabase, Wallet};
-use bdk::{LocalUtxo, SignOptions};
-use bitcoin::psbt::PartiallySignedTransaction;
-use bitcoin::{Amount, Denomination, SignedAmount};
-use log::info;
+
+use bdk::{
+    bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination, SignedAmount},
+    blockchain::{AnyBlockchain, Blockchain},
+    database::AnyDatabase,
+    wallet::{tx_builder::TxOrdering, AddressIndex},
+    KeychainKind, LocalUtxo, SignOptions, Wallet,
+};
+
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
+
+use log::info;
 use std::str::FromStr;
 
 pub struct Taker {

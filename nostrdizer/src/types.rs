@@ -1,6 +1,6 @@
-pub use bdk::bitcoin::Network;
-pub use bitcoin::Amount;
-use bitcoin::{
+pub use bdk::bitcoin::{Amount, Network};
+
+use bdk::bitcoin::{
     psbt::{Input, PartiallySignedTransaction},
     Address, OutPoint, SignedAmount,
 };
@@ -28,9 +28,9 @@ pub const MAX_FEE: f32 = 0.15;
 pub struct NostrdizerOffer {
     pub maker: String,
     pub oid: u32,
-    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_sat")]
     pub txfee: Amount,
-    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_sat")]
     pub cjfee: Amount,
 }
 
@@ -42,13 +42,13 @@ pub struct RelOffer {
     pub offer_id: u32,
     /// Min size of CJ
     /// REVIEW: Double check JM uses sats
-    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_sat")]
     pub minsize: Amount,
     /// Max size of CJ
-    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_sat")]
     pub maxsize: Amount,
     /// Amount Maker will contribute to mining fee
-    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_sat")]
     pub txfee: Amount,
     /// CJ Fee maker expects
     pub cjfee: f64,
@@ -62,16 +62,16 @@ pub struct AbsOffer {
     pub offer_id: u32,
     /// Min size of CJ
     /// REVIEW: Double check JM uses sats
-    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_sat")]
     pub minsize: Amount,
     /// Max size of CJ
-    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_sat")]
     pub maxsize: Amount,
     /// Amount Maker will contribute to mining fee
-    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_sat")]
     pub txfee: Amount,
     /// CJ Fee maker expects
-    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_sat")]
     pub cjfee: Amount,
 }
 
@@ -89,7 +89,7 @@ pub enum Offer {
 pub struct Fill {
     #[serde(rename = "oid")]
     pub offer_id: u32,
-    #[serde(with = "bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_sat")]
     pub amount: Amount,
     pub tencpubkey: String,
     /// Used for Poodle Hash of P2
@@ -176,9 +176,9 @@ pub struct NostrdizerMessage {
 /// Final CJ transaction info
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VerifyCJInfo {
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_btc")]
     pub mining_fee: SignedAmount,
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_btc")]
     pub maker_fee: SignedAmount,
     pub verifyed: bool,
 }
@@ -189,7 +189,7 @@ pub struct VerifyCJInfo {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CJFee {
     /// Absolute CJ fee
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_btc")]
     pub abs_fee: Amount,
     /// Relative CJ fee
     pub rel_fee: f64,
@@ -199,7 +199,7 @@ pub struct CJFee {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MaxMineingFee {
     /// Max absolute value of mining fee
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_btc")]
     pub abs_fee: Amount,
     /// Max mining fee as percent of send amount
     pub rel_fee: f64,
@@ -219,12 +219,12 @@ pub struct AuthCommitment {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MakerConfig {
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_btc")]
     pub abs_fee: Amount,
     pub rel_fee: f64,
-    #[serde(with = "bitcoin::util::amount::serde::as_btc")]
+    #[serde(with = "bdk::bitcoin::util::amount::serde::as_btc")]
     pub minsize: Amount,
-    #[serde(default, with = "bitcoin::util::amount::serde::as_btc::opt")]
+    #[serde(default, with = "bdk::bitcoin::util::amount::serde::as_btc::opt")]
     pub maxsize: Option<Amount>,
     pub will_broadcast: bool,
 }

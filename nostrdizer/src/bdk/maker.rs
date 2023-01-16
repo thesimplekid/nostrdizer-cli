@@ -1,19 +1,23 @@
-use crate::bdk::utils::new_wallet;
-use crate::types::BlockchainConfig;
-use crate::utils::send_signed_tx;
+use super::utils::new_wallet;
+
 use crate::{
     errors::Error,
+    types::BlockchainConfig,
     types::{Fill, IoAuth, MakerConfig, VerifyCJInfo},
+    utils::send_signed_tx,
 };
-use bdk::database::AnyDatabase;
-use bdk::SignOptions;
-use bdk::{wallet::AddressIndex, Wallet};
-use bitcoin::psbt::PartiallySignedTransaction;
-use log::debug;
+
+use bdk::{
+    bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination},
+    database::AnyDatabase,
+    wallet::AddressIndex,
+    SignOptions, Wallet,
+};
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
 
-use bitcoin::{Amount, Denomination};
 use bitcoin_hashes::sha256;
+
+use log::debug;
 use std::str::FromStr;
 
 use super::utils::{get_input_value, get_output_value, new_rpc_blockchain};

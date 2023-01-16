@@ -2,21 +2,19 @@ use crate::{
     errors::Error,
     podle,
     types::{
-        AbsOffer, AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind,
+        AbsOffer, Amount, AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind,
         NostrdizerMessages, Offer, Pubkey, RelOffer, ABS_OFFER, AUTH, FILL, IOAUTH, REL_OFFER,
         TRANSACTION,
     },
     utils::{self, decrypt_message},
 };
 
-use bitcoin::psbt::PartiallySignedTransaction;
+use bdk::bitcoin::psbt::PartiallySignedTransaction;
 use nostr_rust::{
     events::{Event, EventPrepare},
     req::ReqFilter,
     utils::get_timestamp,
 };
-
-pub use bitcoin::Amount;
 
 use serde_json::Value;
 

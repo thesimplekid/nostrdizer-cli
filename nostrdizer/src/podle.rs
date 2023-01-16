@@ -1,16 +1,13 @@
-use std::str::FromStr;
-
-use crate::errors::Error;
-use crate::types::AuthCommitment;
+use super::{errors::Error, types::AuthCommitment};
 
 use num_bigint::BigInt;
 
-use bitcoin::consensus::Decodable;
-use bitcoin::PrivateKey;
+use bdk::bitcoin::{consensus::Decodable, PrivateKey};
 use bitcoin_hashes::{sha256, Hash};
 use secp256k1::{PublicKey, Scalar, Secp256k1, SecretKey};
 
 use log::debug;
+use std::str::FromStr;
 
 fn n() -> BigInt {
     "115792089237316195423570985008687907852837564279074904382605163141518161494337"
@@ -554,7 +551,7 @@ mod tests {
 
     #[test]
     fn test_get_p2() {
-        let priv_key = PrivateKey::from_slice( b"\xf00\x1aD3R\xba\xa9&\xce$\xe3\xf6,\xf3j\xden\x87\x85\xee\xe8\xd4c\xd4C\x80\x1f\x81\x02j\xe9", bitcoin::Network::Regtest).unwrap();
+        let priv_key = PrivateKey::from_slice( b"\xf00\x1aD3R\xba\xa9&\xce$\xe3\xf6,\xf3j\xden\x87\x85\xee\xe8\xd4c\xd4C\x80\x1f\x81\x02j\xe9", bdk::bitcoin::Network::Regtest).unwrap();
         let j = PublicKey::from_str(PRECOMPUTEDNUMS[0]).unwrap();
         let p2 = get_p2(priv_key.inner, j);
 

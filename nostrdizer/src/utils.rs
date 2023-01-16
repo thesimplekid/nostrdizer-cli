@@ -1,12 +1,14 @@
-use crate::errors::Error;
-use crate::types::{
-    NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Offer, SignedTransaction,
-    ABS_OFFER, REL_OFFER, SIGNED_TRANSACTION,
+use super::{
+    errors::Error,
+    types::{
+        NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages, Offer, SignedTransaction,
+        ABS_OFFER, REL_OFFER, SIGNED_TRANSACTION,
+    },
 };
 
-use bitcoin::psbt::PartiallySignedTransaction;
-use nostr_rust::events::EventPrepare;
+use bdk::bitcoin::psbt::PartiallySignedTransaction;
 use nostr_rust::{
+    events::EventPrepare,
     nips::nip4::{decrypt, encrypt},
     nostr_client::Client as NostrClient,
     req::ReqFilter,
