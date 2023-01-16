@@ -8,7 +8,6 @@ use crate::{
     utils::{self, decrypt_message},
 };
 
-use crate::bitcoincore::utils::{get_input_value, get_output_value};
 use bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination};
 
 #[cfg(feature = "bdk")]

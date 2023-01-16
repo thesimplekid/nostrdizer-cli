@@ -1,3 +1,4 @@
+pub use bdk::bitcoin::Network;
 pub use bitcoin::Amount;
 use bitcoin::{
     psbt::{Input, PartiallySignedTransaction},
@@ -106,7 +107,8 @@ pub struct Transaction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename = "ioauth")]
 pub struct IoAuth {
-    // TODO: Serialize as txid:vout
+    // TODO: input should not be an option
+    // Its an issue between compatibility of BDK and core
     #[serde(rename = "ulist")]
     pub utxos: Vec<(OutPoint, Option<Input>)>,
     pub maker_auth_pub: String,
@@ -225,4 +227,17 @@ pub struct TakerConfig {
     pub cj_fee: CJFee,
     pub mining_fee: MaxMineingFee,
     pub minium_makers: usize,
+}
+
+pub struct RpcInfo {
+    pub url: String,
+    pub username: String,
+    pub password: String,
+    pub network: bdk::bitcoin::Network,
+    pub wallet_name: String,
+}
+
+pub enum BlockchainConfig {
+    RPC(RpcInfo),
+    // electrum
 }

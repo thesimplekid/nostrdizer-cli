@@ -1,21 +1,16 @@
+/// This main file used the bitcoincore rpc for wallet functions
 use clap::{Parser, Subcommand};
 
 use dotenvy::dotenv;
-use std::{env, panic, sync::Arc};
+use std::{env, panic};
 
 use log::{debug, error, warn, LevelFilter};
 use nostrdizer::{
-    bdk::{
-        maker::Maker,
-        taker::Taker,
-        utils::{new_rpc_blockchain, new_wallet},
-    },
+    bitcoincore::{maker::Maker, taker::Taker, types::BitcoinCoreCreditals},
     errors::Error as NostrdizerError,
     podle::verify_podle,
-    types::{Amount, BlockchainConfig, MakerConfig, Network, RpcInfo},
+    types::{Amount, MakerConfig},
 };
-
-use nostrdizer::bdk::utils::get_descriptors;
 
 use serde::{Deserialize, Serialize};
 
@@ -39,8 +34,14 @@ struct Cli {
     /// Bitcoin core rpc rpc_url
     #[arg(long, value_parser)]
     rpc_url: Option<String>,
-    #[arg(short, long)]
-    wallet: String,
+
+    /// Bitcoin core username
+    #[arg(long, value_parser)]
+    rpc_username: Option<String>,
+
+    /// Bitcoin core password
+    #[arg(long, value_parser)]
+    rpc_password: Option<String>,
 
     /// Nostr relays
     #[arg(long, value_parser)]
@@ -54,13 +55,13 @@ struct Cli {
 struct Config {
     priv_key: Option<String>,
     rpc_url: Option<String>,
+    rpc_username: Option<String>,
+    rpc_password: Option<String>,
     nostr_relays: Option<Vec<String>>,
 }
 
 #[derive(Subcommand, Debug, Serialize, Deserialize)]
 enum Commands {
-    /// Genrate a BDK wallet
-    GenerateWallet,
     /// Test Poodle
     TestPoodle,
     /// List unspent UTXOs
@@ -117,22 +118,38 @@ fn main() -> Result<()> {
             if let Ok(url) = env::var("RPC_URL") {
                 url
             } else {
-                "http://localhost:8332".to_string()
+                panic!("No RPC url")
             }
         }
     };
-    // RPC config
-    let rpc_username = env::var("RPC_USERNAME")?;
-    let rpc_password = env::var("RPC_PASSWORD")?;
 
-    let blockchain_config = BlockchainConfig::RPC(RpcInfo {
-        url: rpc_url,
-        username: rpc_username,
-        password: rpc_password,
-        network: Network::Regtest,
-        wallet_name: args.wallet,
-    });
+    let rpc_username = match args.rpc_username {
+        Some(username) => username,
+        None => {
+            if let Ok(username) = env::var("RPC_USERNAME") {
+                username
+            } else {
+                panic!("No RPC username")
+            }
+        }
+    };
 
+    let rpc_password = match args.rpc_password {
+        Some(password) => password,
+        None => {
+            if let Ok(password) = env::var("RPC_PASSWORD") {
+                password
+            } else {
+                panic!("No RPC password")
+            }
+        }
+    };
+
+    let bitcoin_core_creds = BitcoinCoreCreditals {
+        rpc_url,
+        rpc_username,
+        rpc_password,
+    };
     /*
     let priv_key = match args.priv_key {
         Some(priv_key) => priv_key,
@@ -162,41 +179,30 @@ fn main() -> Result<()> {
     let relay_urls: Vec<&str> = relay_urls.iter().map(|x| x as &str).collect();
 
     match &args.command {
-        Commands::GenerateWallet => {
-            let des = get_descriptors();
-            debug!("{:?}", des);
-
-            let rpc_info = match blockchain_config {
-                BlockchainConfig::RPC(config) => config,
-            };
-
-            let blockchain = new_rpc_blockchain(rpc_info)?;
-            let wallet = new_wallet(&blockchain, des)?;
-        }
         Commands::TestPoodle => {
-            let taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
-            // let commit = taker.generate_podle()?;
+            let taker = Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
+            let commit = taker.generate_podle()?;
 
-            // if let Err(_err) = verify_podle(255, commit.clone(), commit.commit) {
-            //    panic!()
-            // }
+            if let Err(_err) = verify_podle(255, commit.clone(), commit.commit) {
+                panic!()
+            }
 
             // let num = podle::get_nums(0).unwrap().to_string();
 
             // println!("{:?}", num);
         }
         Commands::ListUnspent => {
-            let taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
+            let mut taker = Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
             let unspent = taker.get_unspent();
             println!("{:#?}", unspent);
         }
         Commands::GetEligibleBalance => {
-            let taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
+            let mut taker = Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
             let balance = taker.get_eligible_balance()?;
             println!("{:?}", balance);
         }
         Commands::ListOffers => {
-            let mut taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
+            let mut taker = Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
             let offers = taker.get_offers()?;
             for (i, offer) in offers.iter().enumerate() {
                 println!("Offer {}: {:?}", i, offer);
@@ -206,7 +212,7 @@ fn main() -> Result<()> {
             send_amount,
             number_of_makers,
         } => {
-            let mut taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
+            let mut taker = Taker::new(args.priv_key, relay_urls, bitcoin_core_creds)?;
 
             let number_of_makers = match number_of_makers {
                 Some(num) => *num,
@@ -246,20 +252,19 @@ fn main() -> Result<()> {
                 number_of_makers,
                 &mut matching_peers,
             )?;
-            debug!("{:?}", matched_offers);
 
             println!("Sent fill offers to peers");
 
             // Step 3: Receive maker pub key (!pubkey)
             // TODO: Just gonna skip this for now
-            //taker.get_maker_pubkey()?;
+            // taker.get_maker_pubkey()?;
             //debug!("got pub key");
 
             println!("Waiting for peer inputs...");
             // Step 4: Send auth (!auth)
-            //let auth_commitment = taker.generate_podle()?;
-            //taker.send_auth_message(auth_commitment, matched_offers)?;
-            //debug!("Sent auth");
+            let auth_commitment = taker.generate_podle()?;
+            taker.send_auth_message(auth_commitment, matched_offers)?;
+            debug!("Sent auth");
 
             // Step 5: Receive maker inputs (!ioauth)
             // wait for responses from peers
@@ -279,22 +284,24 @@ fn main() -> Result<()> {
             println!("Waiting for peer signatures...");
             // Wait for signed txs
             // Combine signed tx
-            let peer_signed_psbts = taker.get_signed_peer_transaction(number_of_makers)?;
+            let peer_signed_txs = taker.get_signed_peer_transaction(number_of_makers)?;
             println!("Makers have signed transaction, signing ...");
 
-            let combined_psbt = taker.combine_psbts(&peer_signed_psbts)?;
+            let peer_signed_psbt = taker.join_psbt(peer_signed_txs)?;
 
             // Taker Sign tx
-            if let Ok(tx_info) = taker.verify_transaction(&combined_psbt, &send_amount) {
+            if let Ok(tx_info) = taker.verify_transaction(peer_signed_psbt.clone(), &send_amount) {
                 println!("Total fee to makers: {} sats.", tx_info.maker_fee.to_sat());
                 println!("Mining fee: {} sats", tx_info.mining_fee.to_sat());
                 if tx_info.verifyed {
                     println!("Transaction passed verification, signing ...");
-                    let signed_tx = taker.sign_psbt(combined_psbt)?;
+                    let signed_psbt = taker.sign_transaction(&peer_signed_psbt)?;
                     println!("Finalized transaction, broadcasting ...");
 
+                    let finalized_psbt = taker.finalize_psbt(&signed_psbt.psbt)?;
+
                     // Broadcast signed tx
-                    let txid = taker.broadcast_transaction(signed_tx)?;
+                    let txid = taker.broadcast_transaction(finalized_psbt)?;
                     println!("TXID: {:?}", txid);
                 } else {
                     bail!("Transaction could not be verified")
@@ -376,7 +383,7 @@ fn main() -> Result<()> {
                 args.priv_key,
                 relay_urls.clone(),
                 &mut config,
-                blockchain_config,
+                bitcoin_core_creds,
             )?;
             loop {
                 // Step 1: Publish order (!ordertype)
@@ -393,7 +400,7 @@ fn main() -> Result<()> {
                 maker.delete_active_offer()?;
 
                 // Step 3: sends maker (!pubkey)
-                //maker.send_pubkey(&peer_pubkey)?;
+                // maker.send_pubkey(&peer_pubkey)?;
 
                 // Step 4: Receives !auth
                 //let auth_commitment = maker.get_commitment_auth()?;
@@ -402,19 +409,18 @@ fn main() -> Result<()> {
 
                 // Step 5: sends (!ioauth)
                 let maker_input = maker.get_inputs(&fill_offer)?;
-                debug!("{:?}", maker_input);
                 maker.send_maker_input(&peer_pubkey, maker_input)?;
 
                 // Step 6: Receives Transaction Hex (!tx)
                 match maker.get_unsigned_cj_transaction() {
                     Ok(unsigned_tx) => {
                         if let Ok(tx_info) =
-                            maker.verify_transaction(&unsigned_tx, &fill_offer.amount)
+                            maker.verify_transaction(unsigned_tx.clone(), &fill_offer.amount)
                         {
                             if tx_info.verifyed {
                                 // Step 7: Signs and sends transaction to taker if verified (!sig)
-                                let signed_psbt = maker.sign_psbt(unsigned_tx)?;
-                                maker.send_signed_psbt(&peer_pubkey, signed_psbt)?;
+                                let signed_tx = maker.sign_psbt(&unsigned_tx.to_string())?;
+                                maker.send_signed_tx(&peer_pubkey, &signed_tx)?;
                             } else {
                                 warn!("Transaction could not be verified");
                             }

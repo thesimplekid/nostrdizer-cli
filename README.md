@@ -40,10 +40,10 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
     - [x] Events should be verified
 - [ ] Cleanup, add tests, and COMMENTS
 - [ ] Move as much code as possible to common not behind features
- - [ ] BDK has rpc capablities might be better to use that
+ - [ ] BDK has rpc capabilities might be better to use that
 - [x] Use Replaceable events for offers
 - [x] Delete events when cj completed
-    - [x] Use ephemeral events for messages
+    - [ ] Use ephemeral events for messages (debuging them is a pain so there disabled for now)
     - [x] Delete maker offer
 - [x] Maker should republish offer after completed Coinjoins
     - [ ] New key with proof of work?
@@ -60,18 +60,27 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 - [ ] Fidelity Bond (it'll be a bit)
 - [ ] Add print outs 
 - [ ] Add Docs
+- [ ] Electrum, rpc options 
+- [ ] Create CJ satisfaction weight of maker utxos
+- [ ] Verify transaction
+    - [ ] Maker
+    - [ ] Taker
 
 Working but should fix
-- [ ] I'm incositanct about where i loop to send messages, some send messages accept a vec of the peers and send the messages. some only accept on pub key and loop is in main.  This all should accept vec
+- [ ] I'm inconstant about where i loop to send messages, some send message fn accept a vec of the peers and send the messages. some only accept on pub key and loop is in main.  Think all should accept vec
 
 ### A Note on Forks
 My fork of [rust-bitcoin-rpc](https://github.com/rust-bitcoin/rust-bitcoincore-rpc) is required as a few functions are not merged upstream. 
 I do intend to clean this up and create a PR to merge upstream as I would rather not depend on forks 
 - [x] [decode transaction](https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/271). 
 - [ ] [Get Change Address](https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/261)
+- [ ] [Decode Psbt](https://github.com/rust-bitcoin/rust-bitcoincore-rpc/pull/269)
 
 ### Bitcoin Core
-Bitcoin core is requited, v23 and v22 have been tested. Other versions may work but have not been tested. 
+Bitcoin core is requited, v23 and v22 have been tested. Other versions may work but have not been tested.
+
+## Contact
+I can be contacted for comments or questions on nostr at _@thesimplekid.com (npub1qjgcmlpkeyl8mdkvp4s0xls4ytcux6my606tgfx9xttut907h0zs76lgjw) or via email tsk@thesimplekid.com.
 
 ## License
 Code is under the BSD 3-Clause License ([LICENSE](LICENSE) or [https://opensource.org/licenses/BSD-3-Clause](https://opensource.org/licenses/BSD-3-Clause))  

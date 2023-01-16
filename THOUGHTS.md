@@ -4,6 +4,10 @@
 
 3) This will suffer from leaking ips to nostr realys, I think for simplicity it makes sense to not worry about that at this level and let apps that integrate the nostrdizer library to handle that. 
 
+<<<<<<< HEAD
 4) Nostr also has an issue of all meta data is public, I think this isnt a huge problem, as long as new nostr keys are used for each transaction and nostr keys are not used for other things. But its something to keep in mind, and there maybe new nostr NIPS that could help here.  
 
 5) One possible improvement to ensure that the message sender is the owner of the utxo is to use the bitcoin key pairs to encrypt the message.  The flow for this could be Maker publishes offer with new random key pair. Taker sends fill offer with pubkey generated from utxo they intend to use, Maker uses their original random key to decrypt but then responds from key generated from bitcoin key using that key for remainder of messages. 
+=======
+4) Nostr also has an issue of all meta data is public, I think this isnt a huge problem, as long as new nostr keys are used for each transaction and nostr keys are not used for other things. But its something to keep in mind, and there maybe new nostr NIPS that could help here.  
+>>>>>>> 5f70be3 (bdk transaction goes through)
