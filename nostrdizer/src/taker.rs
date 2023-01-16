@@ -2,8 +2,8 @@ use crate::{
     errors::Error,
     types::{
         AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages,
-        NostrdizerOffer, Offer, TakerConfig, Transaction, VerifyCJInfo, AUTH, FILL, IOAUTH, PUBKEY,
-        SIGNED_TRANSACTION, TRANSACTION,
+        NostrdizerOffer, Offer, Transaction, AUTH, FILL, IOAUTH, PUBKEY, SIGNED_TRANSACTION,
+        TRANSACTION,
     },
     utils::{self, decrypt_message},
 };
@@ -11,7 +11,6 @@ use crate::{
 use bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination};
 
 #[cfg(feature = "bdk")]
-use bdk::{database::AnyDatabase, Wallet};
 use bitcoin_hashes::{sha256, Hash};
 #[cfg(feature = "bitcoincore")]
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
@@ -28,11 +27,10 @@ use nostr_rust::{
     req::ReqFilter,
     utils::get_timestamp,
 };
-use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
 
 use serde_json::Value;
+use std::collections::HashMap;
 use std::collections::HashSet;
-use std::{collections::HashMap, f64::consts::E};
 
 impl Taker {
     // TODO: This doesnt actually do anything

@@ -2,7 +2,7 @@ pub use bdk::bitcoin::Network;
 pub use bitcoin::Amount;
 use bitcoin::{
     psbt::{Input, PartiallySignedTransaction},
-    Address, OutPoint, SignedAmount, Txid,
+    Address, OutPoint, SignedAmount,
 };
 use bitcoin_hashes::sha256::Hash;
 use secp256k1::PublicKey;

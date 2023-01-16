@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 
 use dotenvy::dotenv;
-use std::{env, panic, sync::Arc};
+use std::env;
 
 use log::{debug, error, warn, LevelFilter};
 use nostrdizer::{
@@ -11,7 +11,6 @@ use nostrdizer::{
         utils::{new_rpc_blockchain, new_wallet},
     },
     errors::Error as NostrdizerError,
-    podle::verify_podle,
     types::{Amount, BlockchainConfig, MakerConfig, Network, RpcInfo},
 };
 
@@ -166,15 +165,21 @@ fn main() -> Result<()> {
             let des = get_descriptors();
             debug!("{:?}", des);
 
+            let BlockchainConfig::RPC(rpc_info) = blockchain_config;
+            /*
+            // For when i add other configs
+            //electrum etc
             let rpc_info = match blockchain_config {
                 BlockchainConfig::RPC(config) => config,
             };
 
+            */
+
             let blockchain = new_rpc_blockchain(rpc_info)?;
-            let wallet = new_wallet(&blockchain, des)?;
+            let _wallet = new_wallet(&blockchain, des)?;
         }
         Commands::TestPoodle => {
-            let taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
+            let _taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
             // let commit = taker.generate_podle()?;
 
             // if let Err(_err) = verify_podle(255, commit.clone(), commit.commit) {
@@ -294,8 +299,8 @@ fn main() -> Result<()> {
                     println!("Finalized transaction, broadcasting ...");
 
                     // Broadcast signed tx
-                    let txid = taker.broadcast_transaction(signed_tx)?;
-                    println!("TXID: {:?}", txid);
+                    taker.broadcast_transaction(signed_tx)?;
+                    // println!("TXID: {:?}", txid);
                 } else {
                     bail!("Transaction could not be verified")
                 }

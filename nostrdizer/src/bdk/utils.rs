@@ -1,13 +1,12 @@
 use bdk::blockchain::ConfigurableBlockchain;
 use bdk::blockchain::{
     rpc::{Auth, RpcBlockchain, RpcConfig},
-    AnyBlockchain, Blockchain, ElectrumBlockchain,
+    AnyBlockchain,
 };
 use bdk::database::{AnyDatabase, MemoryDatabase};
-use bdk::electrum_client::Client;
 use bdk::wallet::AddressIndex;
-use bdk::{Balance, LocalUtxo, SyncOptions, Wallet};
-use bitcoin::psbt::{Input, Output};
+use bdk::{LocalUtxo, SyncOptions, Wallet};
+use bitcoin::psbt::Input;
 use bitcoin::{Amount, TxOut};
 
 use bdk::bitcoin::secp256k1::Secp256k1;
@@ -138,7 +137,7 @@ pub fn get_descriptors() -> (String, String) {
         if let Secret(key, _, _) = derived_xprv_desc_key {
             let mut desc = "wpkh(".to_string();
             desc.push_str(&key.to_string());
-            desc.push_str(")");
+            desc.push(')');
             keys.push(desc);
         }
     }

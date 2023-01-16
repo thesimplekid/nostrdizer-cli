@@ -63,7 +63,7 @@ pub fn send_signed_tx(
         tags: vec![vec!["p".to_string(), peer_pub_key.to_string()]],
         content: encrypt_message,
     }
-    .to_event(&identity, 0);
+    .to_event(identity, 0);
 
     nostr_client.publish_event(&event)?;
     /*

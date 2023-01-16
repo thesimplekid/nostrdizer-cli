@@ -6,15 +6,14 @@ use crate::{
     types::{Fill, IoAuth, MakerConfig, VerifyCJInfo},
 };
 use bdk::database::AnyDatabase;
-use bdk::{database::MemoryDatabase, wallet::AddressIndex, Wallet};
-use bdk::{LocalUtxo, SignOptions};
-use bitcoin::psbt::{PartiallySignedTransaction, Psbt};
+use bdk::SignOptions;
+use bdk::{wallet::AddressIndex, Wallet};
+use bitcoin::psbt::PartiallySignedTransaction;
 use log::debug;
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
 
 use bitcoin::{Amount, Denomination};
 use bitcoin_hashes::sha256;
-use serde::de::value;
 use std::str::FromStr;
 
 use super::utils::{get_input_value, get_output_value, new_rpc_blockchain};

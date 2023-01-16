@@ -6,10 +6,7 @@ use crate::types::{
     AuthCommitment, BlockchainConfig, CJFee, IoAuth, MaxMineingFee, NostrdizerOffer, TakerConfig,
     VerifyCJInfo, DUST, MAX_FEE,
 };
-use bdk::bitcoin::consensus::encode::{deserialize, serialize, serialize_hex};
 use bdk::blockchain::{AnyBlockchain, Blockchain};
-use bdk::miniscript::descriptor::Pkh;
-use bdk::miniscript::Descriptor;
 use bdk::wallet::{tx_builder::TxOrdering, AddressIndex};
 use bdk::KeychainKind;
 use bdk::{database::AnyDatabase, Wallet};
@@ -18,8 +15,6 @@ use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::{Amount, Denomination, SignedAmount};
 use log::info;
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
-use std::collections::HashMap;
-use std::io;
 use std::str::FromStr;
 
 pub struct Taker {
@@ -84,7 +79,7 @@ impl Taker {
 
     /// Taker genrate podle
     pub fn generate_podle(&self) -> Result<AuthCommitment, Error> {
-        let unspent = self.wallet.list_unspent();
+        let _unspent = self.wallet.list_unspent();
 
         //self.wallet.get_descriptor_for_keychain(keychain)
         todo!()
@@ -120,7 +115,7 @@ impl Taker {
         send_amount: Amount,
         maker_inputs: &[(NostrdizerOffer, IoAuth)],
     ) -> Result<PartiallySignedTransaction, Error> {
-        let (psbt, details) = {
+        let (psbt, _details) = {
             let mut builder = self.wallet.build_tx();
             builder.ordering(TxOrdering::Untouched);
             // Add maker cj out
