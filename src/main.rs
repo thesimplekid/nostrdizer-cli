@@ -402,7 +402,6 @@ fn main() -> Result<()> {
 
                 // Step 5: sends (!ioauth)
                 let maker_input = maker.get_inputs(&fill_offer)?;
-                debug!("{:?}", maker_input);
                 maker.send_maker_input(&peer_pubkey, maker_input)?;
 
                 // Step 6: Receives Transaction Hex (!tx)

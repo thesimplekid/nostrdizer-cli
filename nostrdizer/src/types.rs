@@ -18,6 +18,12 @@ pub const IOAUTH: u16 = 128;
 pub const TRANSACTION: u16 = 129;
 pub const SIGNED_TRANSACTION: u16 = 130;
 
+// Dust limit
+pub const DUST: u64 = 546;
+
+// Max fee percent
+pub const MAX_FEE: f32 = 0.15;
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NostrdizerOffer {
     pub maker: String,

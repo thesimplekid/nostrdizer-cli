@@ -4,15 +4,19 @@ use super::utils::{
 use crate::errors::Error;
 use crate::types::{
     AuthCommitment, BlockchainConfig, CJFee, IoAuth, MaxMineingFee, NostrdizerOffer, TakerConfig,
-    VerifyCJInfo,
+    VerifyCJInfo, DUST, MAX_FEE,
 };
 use bdk::bitcoin::consensus::encode::{deserialize, serialize, serialize_hex};
 use bdk::blockchain::{AnyBlockchain, Blockchain};
+use bdk::miniscript::descriptor::Pkh;
+use bdk::miniscript::Descriptor;
 use bdk::wallet::{tx_builder::TxOrdering, AddressIndex};
+use bdk::KeychainKind;
 use bdk::{database::AnyDatabase, Wallet};
 use bdk::{LocalUtxo, SignOptions};
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::{Amount, Denomination, SignedAmount};
+use log::info;
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
 use std::collections::HashMap;
 use std::io;
@@ -130,34 +134,47 @@ impl Taker {
             );
             for (offer, io_auth) in maker_inputs {
                 // Adds maker CJ out
-                builder.add_recipient(
-                    io_auth.coinjoin_address.script_pubkey(),
-                    send_amount.to_sat(),
-                );
+                let script = io_auth.coinjoin_address.script_pubkey();
+
+                // Checks that inputs are p2wpkh
+                if !script.is_v0_p2wpkh() {
+                    return Err(Error::BadInput);
+                }
+                builder.add_recipient(script, send_amount.to_sat());
 
                 let mut maker_input_value = 0;
                 // Add Maker inputs
                 for (outpoint, input) in &io_auth.utxos {
                     // REVIEW: This really shouldn't be an option
                     // Its only an option to work with bitcoincore
-                    // But that makes BDK and bitcoin core incompatibale if done like this
+                    // But that makes BDK and bitcoin core incompatible if done like this
                     if let Some(input) = input {
-                        // TODO: the satfication rate is wrong
-                        builder.add_foreign_utxo(*outpoint, input.clone(), 500)?;
+                        // Technically this should be done on the descriptor of the foreign utxo
+                        // In this case where its a coinjoin where all are same descriptor i think its okay to do it here
+                        let satisfaction_weight = self
+                            .wallet
+                            .get_descriptor_for_keychain(KeychainKind::External)
+                            .max_satisfaction_weight()
+                            .unwrap();
+                        builder
+                            .add_foreign_utxo(*outpoint, input.clone(), satisfaction_weight)
+                            .unwrap();
 
                         maker_input_value += input.witness_utxo.as_ref().unwrap().value;
                     }
                 }
-                let maker_fee = offer.cjfee.to_sat(); // Amount::from_sat(
+                let maker_fee = offer.cjfee.to_sat();
                 let change_value = maker_input_value - send_amount.to_sat() + maker_fee;
 
                 // Add maker change
-                builder.add_recipient(io_auth.change_address.script_pubkey(), change_value);
+                if change_value.gt(&DUST) {
+                    builder.add_recipient(io_auth.change_address.script_pubkey(), change_value);
+                }
             }
-            builder.finish()?
+            builder.finish().unwrap()
         };
 
-        // Check tranaction details to make sure not spending too much
+        // Check transaction details to make sure not spending too much
         Ok(psbt)
     }
 
@@ -167,15 +184,33 @@ impl Taker {
         send_amount: &Amount,
     ) -> Result<VerifyCJInfo, Error> {
         let (input_value, my_input_value) = get_input_value(&psbt.inputs, &self.wallet)?;
+
         let tx = psbt.clone().extract_tx();
         let (output_value, my_output_value) = get_output_value(&tx.output, &self.wallet)?;
         let mining_fee = (input_value - output_value).to_signed()?;
 
+        // Calculate total maker fee
         let maker_fee: SignedAmount =
             my_input_value.to_signed()? - my_output_value.to_signed()? - mining_fee;
         let abs_fee_check = maker_fee.lt(&self.config.cj_fee.abs_fee.to_signed()?);
         let fee_as_percent = maker_fee.to_float_in(Denomination::Satoshi)
             / send_amount.to_float_in(Denomination::Satoshi);
+
+        info!("Spending: {}", my_input_value);
+        info!("Receiving: {}", my_output_value);
+
+        match input_value
+            .checked_sub(output_value)
+            .map(|val| {
+                val.gt(&Amount::from_sat(
+                    (send_amount.to_sat() as f32 * MAX_FEE).floor() as u64,
+                ))
+            })
+            .unwrap_or(true)
+        {
+            true => return Err(Error::FeesTooHigh),
+            false => (),
+        }
 
         let rel_fee_check = fee_as_percent.lt(&self.config.cj_fee.rel_fee);
         Ok(VerifyCJInfo {
@@ -193,16 +228,7 @@ impl Taker {
     ) -> Result<PartiallySignedTransaction, Error> {
         let mut psbt = psbt;
 
-        let sign_options = SignOptions {
-            trust_witness_utxo: true,
-            remove_partial_sigs: false,
-            ..Default::default()
-        };
-
-        let fin = self.wallet.sign(&mut psbt, sign_options)?;
-        log::debug!("Fin: {:?}", fin);
-
-        log::debug!("{:#?}", psbt.clone().extract_tx());
+        self.wallet.sign(&mut psbt, SignOptions::default())?;
 
         Ok(psbt)
     }

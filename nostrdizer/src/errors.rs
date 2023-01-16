@@ -83,6 +83,12 @@ pub enum Error {
 
     #[error("DecodeError")]
     DecodeError(String),
+
+    #[error("Bad input script")]
+    BadInput,
+
+    #[error("Fees too high")]
+    FeesTooHigh,
 }
 
 #[cfg(feature = "bitcoincore")]

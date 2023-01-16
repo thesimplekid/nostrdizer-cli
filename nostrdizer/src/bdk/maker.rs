@@ -121,7 +121,7 @@ impl Maker {
         let fee_as_percent = maker_fee.to_float_in(Denomination::Satoshi)
             / send_amount.to_float_in(Denomination::Satoshi);
 
-        // Verify maker gets > set fee
+        // Verify maker gets >= set fee
         let rel_fee_check = fee_as_percent.ge(&self.config.rel_fee);
 
         // Max send amount check
@@ -136,12 +136,10 @@ impl Maker {
         Ok(VerifyCJInfo {
             mining_fee,
             maker_fee,
-            verifyed: true, /*
-                            : abs_fee_check
-                                && rel_fee_check
-                                && max_amount_check
-                                && send_amount.ge(&self.config.minsize),
-                                */
+            verifyed: abs_fee_check
+                && rel_fee_check
+                && max_amount_check
+                && send_amount.ge(&self.config.minsize),
         })
     }
     pub fn sign_psbt(

@@ -40,7 +40,7 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
     - [x] Events should be verified
 - [ ] Cleanup, add tests, and COMMENTS
 - [ ] Move as much code as possible to common not behind features
- - [ ] BDK has rpc capabilities might be better to use that
+- [ ] BDK has rpc capabilities might be better to use that
 - [x] Use Replaceable events for offers
 - [x] Delete events when cj completed
     - [ ] Use ephemeral events for messages (debuging them is a pain so there disabled for now)
@@ -53,6 +53,7 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
     - [x] Maker validates poodle commitment
     - [ ] Maker stores lists of used commits and checks it was not used before (this is what makes it useful)
         - [ ] Should these be gossiped?
+- [ ] Podle with BDK
 - ~~[ ] Work out how to make interoperable with JM as a taker.~~
     - [ ] Serialization of messages 
     - [ ] Many more ...
@@ -64,7 +65,13 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
 - [ ] Create CJ satisfaction weight of maker utxos
 - [ ] Verify transaction
     - [ ] Maker
+        - [x] Get what is spent plus maker fee 
+        - [ ] Send amount is between min and max
+        - [ ] All are inputs are same address type
     - [ ] Taker
+        - [x] All are inputs are same address type (done when creating CJ)
+        - [x] maker fee is not more then config max
+        - [x] mining fee is not more then config max
 
 Working but should fix
 - [ ] I'm inconstant about where i loop to send messages, some send message fn accept a vec of the peers and send the messages. some only accept on pub key and loop is in main.  Think all should accept vec
