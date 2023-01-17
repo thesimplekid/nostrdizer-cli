@@ -21,11 +21,11 @@ An Overview of the order [flow](./nostrdizer/docs/FLOW.md).
 
 ### Run Maker 
 ```
-cargo r -- --rpc-url "<url of bitcoin core RPC API>" run-maker
+cargo r -- --rpc-url "<url of bitcoin core RPC API>" --wallet <name of wallet> run-maker
 ```
 ### Run Taker
 ```
-cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amount <Send amount> --number-of-makers <number of makers>
+cargo r -- --rpc-url "<url of bitcoin core RPC API>" --wallet <name of wallet> send-transaction --send-amount <Send amount> --number-of-makers <number of makers>
 
 ```
 
@@ -53,10 +53,7 @@ cargo r -- --rpc-url "<url of bitcoin core RPC API>" send-transaction --send-amo
     - [x] Maker validates poodle commitment
     - [ ] Maker stores lists of used commits and checks it was not used before (this is what makes it useful)
         - [ ] Should these be gossiped?
-- [ ] Podle with BDK
-- ~~[ ] Work out how to make interoperable with JM as a taker.~~
-    - [ ] Serialization of messages 
-    - [ ] Many more ...
+    - [ ] Podle with BDK
 - [ ] Use [nip-40](https://github.com/nostr-protocol/nips/blob/master/40.md) expiring events for offers
 - [ ] Fidelity Bond (it'll be a bit)
 - [ ] Add print outs 

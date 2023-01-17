@@ -8,18 +8,13 @@ use super::{
     utils::{self, decrypt_message},
 };
 
-use bdk::{
-    bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination},
-    blockchain::AnyBlockchain,
-    database::AnyDatabase,
-    Wallet,
-};
+use bdk::bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination};
 use bitcoin_hashes::{sha256, Hash};
 
 use log::debug;
 
 #[cfg(feature = "bitcoincore")]
-use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
+use bitcoincore_rpc::Client as RPCClient;
 use nostr_rust::{
     events::{Event, EventPrepare},
     nostr_client::Client as NostrClient,

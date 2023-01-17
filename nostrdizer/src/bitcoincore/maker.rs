@@ -14,7 +14,6 @@ use log::debug;
 use bitcoin::{
     blockdata::transaction::OutPoint, psbt::PartiallySignedTransaction, Amount, Denomination,
 };
-use bitcoin_hashes::sha256;
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 
 use std::str::FromStr;

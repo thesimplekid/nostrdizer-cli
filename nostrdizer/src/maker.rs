@@ -24,7 +24,7 @@ use nostr_rust::{
 };
 
 #[cfg(feature = "bitcoincore")]
-use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
+use bitcoincore_rpc::Client as RPCClient;
 
 use serde_json::Value;
 

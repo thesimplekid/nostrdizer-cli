@@ -11,10 +11,13 @@ use nostrdizer::{
 
 use nostrdizer::types::BitcoinCoreCredentials;
 
+// These are used for BDK
+#[allow(unused)]
 use nostrdizer::types::{Network, RpcInfo};
 use nostrdizer::{
     maker::Maker,
     taker::Taker,
+    // These are needed for BDK
     //utils::{new_rpc_blockchain, new_wallet},
 };
 
@@ -26,7 +29,6 @@ use rand::{thread_rng, Rng};
 use std::io::Write;
 
 use anyhow::{bail, Result};
-//use bitcoin::Amount;
 
 /// CLI for nostrdizer
 #[derive(Parser, Debug, Serialize, Deserialize)]
@@ -148,20 +150,6 @@ fn main() -> Result<()> {
         rpc_username,
         rpc_password,
     });
-
-    /*
-    let priv_key = match args.priv_key {
-        Some(priv_key) => priv_key,
-        None => {
-            if let Ok(priv_key) = env::var("SECRET_KEY") {
-                priv_key
-            } else {
-                let (sk, _) = get_random_secret_key();
-                hex::encode(sk.as_ref())
-            }
-        }
-    };
-    */
 
     let relay_urls = match args.nostr_relays {
         Some(nostr) => nostr,
