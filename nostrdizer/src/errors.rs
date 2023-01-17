@@ -89,6 +89,9 @@ pub enum Error {
 
     #[error("Fees too high")]
     FeesTooHigh,
+
+    #[error("Invalid credentials")]
+    InvalidCredentials,
 }
 
 #[cfg(feature = "bitcoincore")]

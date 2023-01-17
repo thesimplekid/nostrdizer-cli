@@ -106,7 +106,6 @@ pub struct Pubkey {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename = "tx")]
 pub struct Transaction {
-    /// Transaction hex
     pub psbt: PartiallySignedTransaction,
 }
 
@@ -242,8 +241,17 @@ pub struct RpcInfo {
     pub network: bdk::bitcoin::Network,
     pub wallet_name: String,
 }
+#[cfg(feature = "bitcoincore")]
+pub struct BitcoinCoreCredentials {
+    pub rpc_url: String,
+    pub wallet_name: String,
+    pub rpc_username: String,
+    pub rpc_password: String,
+}
 
 pub enum BlockchainConfig {
+    #[cfg(feature = "bitcoincore")]
+    CoreRPC(BitcoinCoreCredentials),
     RPC(RpcInfo),
     // electrum
 }

@@ -1,12 +1,14 @@
-use super::utils::sign_psbt;
-use crate::bitcoincore::{
-    types::BitcoinCoreCreditals,
+use super::{
+    utils::sign_psbt,
     utils::{get_eligible_balance, get_mining_fee, get_unspent},
 };
-use crate::errors::Error;
-use crate::podle;
-use crate::types::{
-    AuthCommitment, CJFee, IoAuth, MaxMineingFee, NostrdizerOffer, TakerConfig, VerifyCJInfo,
+use crate::{
+    errors::Error,
+    podle,
+    types::{
+        AuthCommitment, BlockchainConfig, CJFee, IoAuth, MaxMineingFee, NostrdizerOffer,
+        TakerConfig, VerifyCJInfo, DUST,
+    },
 };
 
 use bitcoin::psbt::PartiallySignedTransaction;
@@ -15,7 +17,6 @@ use bitcoincore_rpc_json::FinalizePsbtResult;
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
 
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
-use bitcoincore_rpc_json::WalletProcessPsbtResult;
 use bitcoincore_rpc_json::{CreateRawTransactionInput, ListUnspentResultEntry};
 
 use log::debug;
@@ -33,8 +34,13 @@ impl Taker {
     pub fn new(
         priv_key: Option<String>,
         relay_urls: Vec<&str>,
-        bitcoin_core_creds: BitcoinCoreCreditals,
+        bitcoin_core_creds: BlockchainConfig,
     ) -> Result<Self, Error> {
+        let bitcoin_core_creds = match bitcoin_core_creds {
+            BlockchainConfig::CoreRPC(creds) => creds,
+            _ => return Err(Error::InvalidCredentials),
+        };
+
         let priv_key = match priv_key {
             Some(key) => key,
             None => {
@@ -44,8 +50,12 @@ impl Taker {
         };
         let identity = Identity::from_str(&priv_key)?;
         let nostr_client = NostrClient::new(relay_urls)?;
+        let wallet_url = format!(
+            "{}/wallet/{}",
+            &bitcoin_core_creds.rpc_url, &bitcoin_core_creds.wallet_name
+        );
         let rpc_client = RPCClient::new(
-            &bitcoin_core_creds.rpc_url,
+            &wallet_url,
             Auth::UserPass(
                 bitcoin_core_creds.rpc_username,
                 bitcoin_core_creds.rpc_password,
@@ -73,7 +83,6 @@ impl Taker {
     }
 
     /// Gets the taker inputs for CJ transaction
-    #[cfg(feature = "bitcoincore")]
     pub fn get_inputs(
         &mut self,
         amount: Amount,
@@ -139,7 +148,9 @@ impl Taker {
 
             let maker_fee = offer.cjfee; // Amount::from_sat(
             let change_value = maker_input_val - send_amount + maker_fee;
-            outputs.insert(maker_input.change_address.to_string(), change_value);
+            if change_value.to_sat() > DUST {
+                outputs.insert(maker_input.change_address.to_string(), change_value);
+            }
 
             total_maker_fees += maker_fee;
         }
@@ -208,24 +219,23 @@ impl Taker {
         get_unspent(&self.rpc_client)
     }
     /// Sign tx
-    pub fn sign_transaction(
+    pub fn sign_psbt(
         &mut self,
         unsigned_psbt: &PartiallySignedTransaction,
-    ) -> Result<WalletProcessPsbtResult, Error> {
+    ) -> Result<PartiallySignedTransaction, Error> {
         sign_psbt(unsigned_psbt, &self.rpc_client)
     }
 
-    pub fn join_psbt(
+    pub fn combine_psbts(
         &mut self,
-        psbts: Vec<PartiallySignedTransaction>,
+        psbts: &[PartiallySignedTransaction],
     ) -> Result<PartiallySignedTransaction, Error> {
-        let psbts: Vec<String> = psbts.into_iter().map(|p| p.to_string()).collect();
-        let result: String;
-        if psbts.len() > 1 {
-            result = self.rpc_client.join_psbt(&psbts)?;
+        let psbts: Vec<String> = psbts.iter().map(|p| p.to_string()).collect();
+        let result = if psbts.len() > 1 {
+            self.rpc_client.join_psbt(&psbts)?
         } else {
-            result = psbts[0].clone();
-        }
+            psbts[0].clone()
+        };
 
         Ok(PartiallySignedTransaction::from_str(&result).unwrap())
     }
@@ -234,13 +244,13 @@ impl Taker {
     }
 
     /// Broadcast transaction
-    pub fn broadcast_transaction(
+    pub fn broadcast_psbt(
         &mut self,
-        final_psbt: FinalizePsbtResult,
+        final_psbt: PartiallySignedTransaction,
     ) -> Result<bitcoin::Txid, Error> {
         Ok(self
             .rpc_client
-            .send_raw_transaction(&final_psbt.hex.unwrap())?)
+            .send_raw_transaction(&final_psbt.extract_tx())?)
     }
 
     /// Taker generate podle
@@ -261,7 +271,7 @@ impl Taker {
 
     pub fn verify_transaction(
         &mut self,
-        psbt: PartiallySignedTransaction,
+        psbt: &PartiallySignedTransaction,
         sign_amount: &Amount,
     ) -> Result<VerifyCJInfo, Error> {
         // let decoded_transaction = self.rpc_client.decode_psbt(psbt).unwrap();
@@ -281,14 +291,5 @@ impl Taker {
             maker_fee: SignedAmount::ZERO,
             verifyed: true,
         })
-    }
-
-    /// Maker sign psbt
-    pub fn sign_psbt(
-        unsigned_psbt: &str,
-        rpc_client: &RPCClient,
-    ) -> Result<WalletProcessPsbtResult, Error> {
-        let signed_psbt = rpc_client.wallet_process_psbt(unsigned_psbt, Some(true), None, None)?;
-        Ok(signed_psbt)
     }
 }

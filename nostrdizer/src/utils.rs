@@ -20,6 +20,7 @@ use secp256k1::{SecretKey, XOnlyPublicKey};
 
 use std::str::FromStr;
 
+/// Querys nostr realys of current offers
 pub fn get_offers(nostr_client: &mut NostrClient) -> Result<Vec<(String, Offer)>, Error> {
     let filter = ReqFilter {
         ids: None,
@@ -45,8 +46,8 @@ pub fn get_offers(nostr_client: &mut NostrClient) -> Result<Vec<(String, Offer)>
     Ok(offers.clone())
 }
 
-/// Sends signed tx to peer
-pub fn send_signed_tx(
+/// Sends signed psbt to peer
+pub fn send_signed_psbt(
     identity: &Identity,
     peer_pub_key: &str,
     psbt: PartiallySignedTransaction,

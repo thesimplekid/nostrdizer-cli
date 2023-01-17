@@ -12,7 +12,7 @@ edition = "2021"
 members = [ "nostrdizer" ] 
 
 [dependencies]
-nostrdizer = { path = "nostrdizer", features = ["bdk"] }
+nostrdizer = { path = "nostrdizer", features = ["bitcoincore"] }
 chrono = { version = "0.4.22", features = ["serde"] }
 clap = { version = "4.0.22", features = ["derive"] }
 serde = { version = "1.0.147", features = ["derive"] }

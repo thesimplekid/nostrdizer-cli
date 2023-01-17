@@ -4,8 +4,9 @@ use bitcoin::{psbt::PartiallySignedTransaction, Amount};
 use bitcoincore_rpc::{Client as RPCClient, RpcApi};
 use bitcoincore_rpc_json::{
     GetRawTransactionResultVin, GetRawTransactionResultVout, ListUnspentResultEntry,
-    SignRawTransactionResult, WalletProcessPsbtResult,
 };
+
+use std::str::FromStr;
 
 /// Get output value of decoded tx
 pub fn get_output_value(
@@ -26,13 +27,6 @@ pub fn get_output_value(
     }
 
     Ok((output_value, my_output_value))
-}
-
-pub fn sign_tx_hex(
-    unsigned_tx: &str,
-    rpc_client: &RPCClient,
-) -> Result<SignRawTransactionResult, Error> {
-    Ok(rpc_client.sign_raw_transaction_with_wallet(unsigned_tx, None, None)?)
 }
 
 /// Gets balance eligible for coinjoin
@@ -88,12 +82,12 @@ pub fn get_input_value(
     Ok((input_value, my_input_value))
 }
 
-/// Maker sign psbt
+/// Sign psbt
 pub fn sign_psbt(
     unsigned_psbt: &PartiallySignedTransaction,
     rpc_client: &RPCClient,
-) -> Result<WalletProcessPsbtResult, Error> {
+) -> Result<PartiallySignedTransaction, Error> {
     let signed_psbt =
         rpc_client.wallet_process_psbt(&unsigned_psbt.to_string(), Some(true), None, None)?;
-    Ok(signed_psbt)
+    Ok(PartiallySignedTransaction::from_str(&signed_psbt.psbt).unwrap())
 }

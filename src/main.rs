@@ -3,17 +3,22 @@ use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
 use std::env;
 
+use nostrdizer::bitcoincore::{maker::Maker, taker::Taker};
+
 use log::{debug, error, warn, LevelFilter};
 use nostrdizer::{
-    bdk::{
-        maker::Maker,
-        taker::Taker,
-        utils::{new_rpc_blockchain, new_wallet},
-    },
     errors::Error as NostrdizerError,
-    types::{Amount, BlockchainConfig, MakerConfig, Network, RpcInfo},
+    types::{Amount, BitcoinCoreCredentials, BlockchainConfig, MakerConfig, Network, RpcInfo},
 };
 
+#[cfg(feature = "bdk")]
+use nostrdizer::bdk::{
+    maker::Maker,
+    taker::Taker,
+    utils::{new_rpc_blockchain, new_wallet},
+};
+
+#[cfg(feature = "bdk")]
 use nostrdizer::bdk::utils::get_descriptors;
 
 use serde::{Deserialize, Serialize};
@@ -59,6 +64,7 @@ struct Config {
 #[derive(Subcommand, Debug, Serialize, Deserialize)]
 enum Commands {
     /// Genrate a BDK wallet
+    #[cfg(feature = "bdk")]
     GenerateWallet,
     /// Test Poodle
     TestPoodle,
@@ -124,12 +130,22 @@ fn main() -> Result<()> {
     let rpc_username = env::var("RPC_USERNAME")?;
     let rpc_password = env::var("RPC_PASSWORD")?;
 
+    /*
     let blockchain_config = BlockchainConfig::RPC(RpcInfo {
         url: rpc_url,
         username: rpc_username,
         password: rpc_password,
         network: Network::Regtest,
         wallet_name: args.wallet,
+    });
+
+    */
+
+    let blockchain_config = BlockchainConfig::CoreRPC(BitcoinCoreCredentials {
+        rpc_url,
+        wallet_name: args.wallet,
+        rpc_username,
+        rpc_password,
     });
 
     /*
@@ -161,6 +177,7 @@ fn main() -> Result<()> {
     let relay_urls: Vec<&str> = relay_urls.iter().map(|x| x as &str).collect();
 
     match &args.command {
+        #[cfg(feature = "bdk")]
         Commands::GenerateWallet => {
             let des = get_descriptors();
             debug!("{:?}", des);
@@ -191,12 +208,12 @@ fn main() -> Result<()> {
             // println!("{:?}", num);
         }
         Commands::ListUnspent => {
-            let taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
+            let mut taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
             let unspent = taker.get_unspent();
             println!("{:#?}", unspent);
         }
         Commands::GetEligibleBalance => {
-            let taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
+            let mut taker = Taker::new(args.priv_key, relay_urls, blockchain_config)?;
             let balance = taker.get_eligible_balance()?;
             println!("{:?}", balance);
         }
@@ -295,11 +312,11 @@ fn main() -> Result<()> {
                 println!("Mining fee: {} sats", tx_info.mining_fee.to_sat());
                 if tx_info.verifyed {
                     println!("Transaction passed verification, signing ...");
-                    let signed_tx = taker.sign_psbt(combined_psbt)?;
+                    let signed_psbt = taker.sign_psbt(&combined_psbt)?;
                     println!("Finalized transaction, broadcasting ...");
 
                     // Broadcast signed tx
-                    taker.broadcast_transaction(signed_tx)?;
+                    taker.broadcast_psbt(signed_psbt)?;
                     // println!("TXID: {:?}", txid);
                 } else {
                     bail!("Transaction could not be verified")
@@ -411,14 +428,15 @@ fn main() -> Result<()> {
 
                 // Step 6: Receives Transaction Hex (!tx)
                 match maker.get_unsigned_cj_transaction() {
-                    Ok(unsigned_tx) => {
+                    Ok(unsigned_psbt) => {
                         if let Ok(tx_info) =
-                            maker.verify_transaction(&unsigned_tx, &fill_offer.amount)
+                            maker.verify_transaction(&unsigned_psbt, &fill_offer.amount)
                         {
                             if tx_info.verifyed {
                                 // Step 7: Signs and sends transaction to taker if verified (!sig)
-                                let signed_psbt = maker.sign_psbt(unsigned_tx)?;
-                                maker.send_signed_psbt(&peer_pubkey, signed_psbt)?;
+                                let signed_psbt = maker.sign_psbt(&unsigned_psbt)?;
+
+                                maker.publish_signed_psbt(&peer_pubkey, signed_psbt)?;
                             } else {
                                 warn!("Transaction could not be verified");
                             }

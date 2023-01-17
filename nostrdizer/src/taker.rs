@@ -10,16 +10,16 @@ use super::{
 
 use bdk::bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination};
 
-#[cfg(feature = "bdk")]
 use bitcoin_hashes::{sha256, Hash};
-#[cfg(feature = "bitcoincore")]
-use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
+
 use log::debug;
 
-#[cfg(all(feature = "bitcoincore", not(feature = "bdk")))]
+#[cfg(feature = "bitcoincore")]
 use crate::bitcoincore::taker::Taker;
+#[cfg(feature = "bitcoincore")]
+use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 
-#[cfg(all(feature = "bdk", not(feature = "bitcoincore")))]
+#[cfg(feature = "bdk")]
 use crate::bdk::taker::Taker;
 
 use nostr_rust::{

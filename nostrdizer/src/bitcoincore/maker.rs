@@ -1,10 +1,9 @@
-use crate::bitcoincore::{
-    types::BitcoinCoreCreditals,
-    utils::{get_eligible_balance, sign_tx_hex},
-};
+use super::utils::get_eligible_balance;
+
 use crate::errors::Error;
-use crate::types::{Fill, IoAuth, MakerConfig, VerifyCJInfo};
-use crate::utils;
+use crate::types::{BlockchainConfig, Fill, IoAuth, MakerConfig, VerifyCJInfo};
+use crate::utils::send_signed_psbt;
+
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
 
 use log::debug;
@@ -14,7 +13,6 @@ use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::{Amount, SignedAmount};
 use bitcoin_hashes::sha256;
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
-use bitcoincore_rpc_json::SignRawTransactionResult;
 use std::str::FromStr;
 
 pub struct Maker {
@@ -30,8 +28,12 @@ impl Maker {
         priv_key: Option<String>,
         relay_urls: Vec<&str>,
         config: &mut MakerConfig,
-        bitcoin_core_creds: BitcoinCoreCreditals,
+        bitcoin_core_creds: BlockchainConfig,
     ) -> Result<Self, Error> {
+        let bitcoin_core_creds = match bitcoin_core_creds {
+            BlockchainConfig::CoreRPC(creds) => creds,
+            _ => return Err(Error::InvalidCredentials),
+        };
         let priv_key = match priv_key {
             Some(key) => key,
             None => {
@@ -42,9 +44,12 @@ impl Maker {
         let identity = Identity::from_str(&priv_key)?;
 
         let nostr_client = NostrClient::new(relay_urls)?;
-
+        let wallet_url = format!(
+            "{}/wallet/{}",
+            &bitcoin_core_creds.rpc_url, &bitcoin_core_creds.wallet_name
+        );
         let rpc_client = RPCClient::new(
-            &bitcoin_core_creds.rpc_url,
+            &wallet_url,
             Auth::UserPass(
                 bitcoin_core_creds.rpc_username,
                 bitcoin_core_creds.rpc_password,
@@ -66,27 +71,13 @@ impl Maker {
         Ok(maker)
     }
 
-    /// Sign tx hex
-    pub fn sign_tx_hex(
-        &mut self,
-        unsigned_tx_hex: &str,
-    ) -> Result<SignRawTransactionResult, Error> {
-        sign_tx_hex(unsigned_tx_hex, &self.rpc_client)
-    }
-
-    /// Send signed tx back to taker
-    pub fn send_signed_tx(
+    /// Publishes signed psbt to nostr
+    pub fn publish_signed_psbt(
         &mut self,
         peer_pub_key: &str,
-        psbt: &PartiallySignedTransaction,
+        psbt: PartiallySignedTransaction,
     ) -> Result<(), Error> {
-        utils::send_signed_tx(
-            &self.identity,
-            peer_pub_key,
-            psbt.clone(),
-            &mut self.nostr_client,
-        )?;
-        Ok(())
+        send_signed_psbt(&self.identity, peer_pub_key, psbt, &mut self.nostr_client)
     }
 
     /// Gets maker input for CJ
@@ -129,7 +120,7 @@ impl Maker {
 
     pub fn verify_transaction(
         &mut self,
-        psbt: PartiallySignedTransaction,
+        psbt: &PartiallySignedTransaction,
         send_amount: &Amount,
     ) -> Result<VerifyCJInfo, Error> {
         // let decoded_transaction = self.rpc_client.decode_psbt(psbt).unwrap();
@@ -151,10 +142,16 @@ impl Maker {
         })
     }
     /// Maker sign psbt
-    pub fn sign_psbt(&mut self, unsigned_psbt: &str) -> Result<PartiallySignedTransaction, Error> {
-        let signed_psbt =
-            self.rpc_client
-                .wallet_process_psbt(unsigned_psbt, Some(true), None, None)?;
+    pub fn sign_psbt(
+        &mut self,
+        unsigned_psbt: &PartiallySignedTransaction,
+    ) -> Result<PartiallySignedTransaction, Error> {
+        let signed_psbt = self.rpc_client.wallet_process_psbt(
+            &unsigned_psbt.to_string(),
+            Some(true),
+            None,
+            None,
+        )?;
         Ok(PartiallySignedTransaction::from_str(&signed_psbt.psbt).unwrap())
     }
 }
