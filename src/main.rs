@@ -3,23 +3,22 @@ use clap::{Parser, Subcommand};
 use dotenvy::dotenv;
 use std::env;
 
-use nostrdizer::bitcoincore::{maker::Maker, taker::Taker};
-
 use log::{debug, error, warn, LevelFilter};
 use nostrdizer::{
     errors::Error as NostrdizerError,
-    types::{Amount, BitcoinCoreCredentials, BlockchainConfig, MakerConfig},
+    types::{Amount, BlockchainConfig, MakerConfig},
 };
 
-#[cfg(feature = "bdk")]
-use nostrdizer::bdk::{
+use nostrdizer::types::BitcoinCoreCredentials;
+
+use nostrdizer::types::{Network, RpcInfo};
+use nostrdizer::{
     maker::Maker,
     taker::Taker,
-    utils::{new_rpc_blockchain, new_wallet},
+    //utils::{new_rpc_blockchain, new_wallet},
 };
 
-#[cfg(feature = "bdk")]
-use nostrdizer::bdk::utils::get_descriptors;
+//use nostrdizer::bdk::utils::get_descriptors;
 
 use serde::{Deserialize, Serialize};
 
@@ -131,6 +130,7 @@ fn main() -> Result<()> {
     let rpc_password = env::var("RPC_PASSWORD")?;
 
     /*
+    // Config to use for BDK
     let blockchain_config = BlockchainConfig::RPC(RpcInfo {
         url: rpc_url,
         username: rpc_username,
@@ -139,8 +139,9 @@ fn main() -> Result<()> {
         wallet_name: args.wallet,
     });
 
-    */
 
+    */
+    // Config to use wit Bitcore RPC
     let blockchain_config = BlockchainConfig::CoreRPC(BitcoinCoreCredentials {
         rpc_url,
         wallet_name: args.wallet,
@@ -312,7 +313,7 @@ fn main() -> Result<()> {
                 println!("Mining fee: {} sats", tx_info.mining_fee.to_sat());
                 if tx_info.verifyed {
                     println!("Transaction passed verification, signing ...");
-                    let signed_psbt = taker.sign_psbt(&combined_psbt)?;
+                    let signed_psbt = taker.sign_psbt(combined_psbt)?;
                     println!("Finalized transaction, broadcasting ...");
 
                     // Broadcast signed tx
@@ -434,7 +435,7 @@ fn main() -> Result<()> {
                         {
                             if tx_info.verifyed {
                                 // Step 7: Signs and sends transaction to taker if verified (!sig)
-                                let signed_psbt = maker.sign_psbt(&unsigned_psbt)?;
+                                let signed_psbt = maker.sign_psbt(unsigned_psbt)?;
 
                                 maker.publish_signed_psbt(&peer_pubkey, signed_psbt)?;
                             } else {

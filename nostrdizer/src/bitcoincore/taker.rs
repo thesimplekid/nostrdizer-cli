@@ -4,6 +4,7 @@ use super::utils::{
 use crate::{
     errors::Error,
     podle,
+    taker::Taker,
     types::{
         AuthCommitment, BlockchainConfig, CJFee, IoAuth, MaxMineingFee, NostrdizerOffer,
         TakerConfig, VerifyCJInfo, DUST,
@@ -21,13 +22,6 @@ use bitcoincore_rpc_json::{CreateRawTransactionInput, ListUnspentResultEntry};
 use log::debug;
 use std::collections::HashMap;
 use std::str::FromStr;
-
-pub struct Taker {
-    pub identity: Identity,
-    pub config: TakerConfig,
-    pub nostr_client: NostrClient,
-    pub rpc_client: RPCClient,
-}
 
 impl Taker {
     pub fn new(
@@ -220,9 +214,9 @@ impl Taker {
     /// Sign tx
     pub fn sign_psbt(
         &mut self,
-        unsigned_psbt: &PartiallySignedTransaction,
+        unsigned_psbt: PartiallySignedTransaction,
     ) -> Result<PartiallySignedTransaction, Error> {
-        sign_psbt(unsigned_psbt, &self.rpc_client)
+        sign_psbt(&unsigned_psbt, &self.rpc_client)
     }
 
     pub fn combine_psbts(

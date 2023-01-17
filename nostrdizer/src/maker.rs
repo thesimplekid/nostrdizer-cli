@@ -2,29 +2,43 @@ use crate::{
     errors::Error,
     podle,
     types::{
-        AbsOffer, Amount, AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind,
-        NostrdizerMessages, Offer, Pubkey, RelOffer, ABS_OFFER, AUTH, FILL, IOAUTH, REL_OFFER,
-        TRANSACTION,
+        AbsOffer, Amount, AuthCommitment, Fill, IoAuth, MakerConfig, NostrdizerMessage,
+        NostrdizerMessageKind, NostrdizerMessages, Offer, Pubkey, RelOffer, ABS_OFFER, AUTH, FILL,
+        IOAUTH, REL_OFFER, TRANSACTION,
     },
     utils::{self, decrypt_message},
 };
 
 use bdk::bitcoin::psbt::PartiallySignedTransaction;
+
+#[cfg(feature = "bdk")]
+use bdk::{database::AnyDatabase, wallet::Wallet};
+use bitcoin_hashes::sha256;
+
 use nostr_rust::{
     events::{Event, EventPrepare},
+    nostr_client::Client as NostrClient,
     req::ReqFilter,
     utils::get_timestamp,
+    Identity,
 };
+
+#[cfg(feature = "bitcoincore")]
+use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 
 use serde_json::Value;
 
-#[cfg(all(feature = "bitcoincore", not(feature = "bdk")))]
-use crate::bitcoincore::maker::Maker;
-
-#[cfg(all(feature = "bdk", not(feature = "bitcoincore")))]
-use crate::bdk::maker::Maker;
-
 use rand::{thread_rng, Rng};
+pub struct Maker {
+    pub identity: Identity,
+    pub config: MakerConfig,
+    pub nostr_client: NostrClient,
+    #[cfg(feature = "bitcoincore")]
+    pub rpc_client: RPCClient,
+    #[cfg(feature = "bdk")]
+    pub wallet: Wallet<AnyDatabase>,
+    pub fill_commitment: Option<sha256::Hash>,
+}
 
 impl Maker {
     pub fn publish_offer(&mut self) -> Result<(), Error> {

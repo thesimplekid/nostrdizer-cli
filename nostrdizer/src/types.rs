@@ -241,7 +241,7 @@ pub struct RpcInfo {
     pub network: bdk::bitcoin::Network,
     pub wallet_name: String,
 }
-#[cfg(feature = "bitcoincore")]
+
 pub struct BitcoinCoreCredentials {
     pub rpc_url: String,
     pub wallet_name: String,

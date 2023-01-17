@@ -3,6 +3,7 @@ use super::utils::{
 };
 use crate::{
     errors::Error,
+    taker::Taker,
     types::{
         AuthCommitment, BlockchainConfig, CJFee, IoAuth, MaxMineingFee, NostrdizerOffer,
         TakerConfig, VerifyCJInfo, DUST, MAX_FEE,
@@ -11,10 +12,9 @@ use crate::{
 
 use bdk::{
     bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination, SignedAmount},
-    blockchain::{AnyBlockchain, Blockchain},
-    database::AnyDatabase,
+    blockchain::Blockchain,
     wallet::{tx_builder::TxOrdering, AddressIndex},
-    KeychainKind, LocalUtxo, SignOptions, Wallet,
+    KeychainKind, LocalUtxo, SignOptions,
 };
 
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
@@ -22,13 +22,6 @@ use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClien
 use log::info;
 use std::str::FromStr;
 
-pub struct Taker {
-    pub identity: Identity,
-    pub config: TakerConfig,
-    pub nostr_client: NostrClient,
-    pub wallet: Wallet<AnyDatabase>,
-    pub blockchain: AnyBlockchain,
-}
 impl Taker {
     pub fn new(
         priv_key: Option<String>,
@@ -233,7 +226,7 @@ impl Taker {
         Ok(psbt)
     }
 
-    pub fn broadcast_transaction(&mut self, psbt: PartiallySignedTransaction) -> Result<(), Error> {
+    pub fn broadcast_psbt(&mut self, psbt: PartiallySignedTransaction) -> Result<(), Error> {
         Ok(self.blockchain.broadcast(&psbt.extract_tx())?)
     }
 }

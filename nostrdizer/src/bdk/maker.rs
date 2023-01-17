@@ -2,32 +2,23 @@ use super::utils::new_wallet;
 
 use crate::{
     errors::Error,
+    maker::Maker,
     types::BlockchainConfig,
     types::{Fill, IoAuth, MakerConfig, VerifyCJInfo},
-    utils::send_signed_tx,
+    utils::send_signed_psbt,
 };
 
 use bdk::{
     bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination},
-    database::AnyDatabase,
     wallet::AddressIndex,
-    SignOptions, Wallet,
+    SignOptions,
 };
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
-
-use bitcoin_hashes::sha256;
 
 use log::debug;
 use std::str::FromStr;
 
 use super::utils::{get_input_value, get_output_value, new_rpc_blockchain};
-pub struct Maker {
-    pub identity: Identity,
-    pub config: MakerConfig,
-    pub nostr_client: NostrClient,
-    pub wallet: Wallet<AnyDatabase>,
-    pub fill_commitment: Option<sha256::Hash>,
-}
 
 impl Maker {
     pub fn new(
@@ -156,11 +147,11 @@ impl Maker {
         Ok(psbt)
     }
 
-    pub fn send_signed_psbt(
+    pub fn publish_signed_psbt(
         &mut self,
         peer_pub_key: &str,
         psbt: PartiallySignedTransaction,
     ) -> Result<(), Error> {
-        send_signed_tx(&self.identity, peer_pub_key, psbt, &mut self.nostr_client)
+        send_signed_psbt(&self.identity, peer_pub_key, psbt, &mut self.nostr_client)
     }
 }

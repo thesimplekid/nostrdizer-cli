@@ -2,31 +2,47 @@ use super::{
     errors::Error,
     types::{
         AuthCommitment, Fill, IoAuth, NostrdizerMessage, NostrdizerMessageKind, NostrdizerMessages,
-        NostrdizerOffer, Offer, Transaction, AUTH, FILL, IOAUTH, PUBKEY, SIGNED_TRANSACTION,
-        TRANSACTION,
+        NostrdizerOffer, Offer, TakerConfig, Transaction, AUTH, FILL, IOAUTH, PUBKEY,
+        SIGNED_TRANSACTION, TRANSACTION,
     },
     utils::{self, decrypt_message},
 };
 
-use bdk::bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination};
+use bdk::{
+    bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination},
+    blockchain::AnyBlockchain,
+    database::AnyDatabase,
+    Wallet,
+};
+use bitcoin_hashes::{sha256, Hash};
 
 use log::debug;
 
 #[cfg(feature = "bitcoincore")]
-use crate::bitcoincore::taker::Taker;
-
-#[cfg(feature = "bdk")]
-use crate::bdk::taker::Taker;
-
+use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 use nostr_rust::{
     events::{Event, EventPrepare},
+    nostr_client::Client as NostrClient,
     req::ReqFilter,
     utils::get_timestamp,
+    Identity,
 };
 
 use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
+
+pub struct Taker {
+    pub identity: Identity,
+    pub config: TakerConfig,
+    pub nostr_client: NostrClient,
+    #[cfg(feature = "bitcoincore")]
+    pub rpc_client: RPCClient,
+    #[cfg(feature = "bdk")]
+    pub wallet: Wallet<AnyDatabase>,
+    #[cfg(feature = "bdk")]
+    pub blockchain: AnyBlockchain,
+}
 
 impl Taker {
     // TODO: This doesnt actually do anything
@@ -246,10 +262,11 @@ impl Taker {
         matching_offers.retain(|o| unique_makers.contains(&o.maker));
 
         let mut last_peer = 0;
-        let commitment = self.generate_podle()?;
-        let commitment = commitment.commit; // sha256::Hash::hash(commitment.p2.to_string().as_bytes());
-                                            // TODO: Need to get the priv key from
+        // let commitment = self.generate_podle()?;
+        //let commitment = commitment.commit; // sha256::Hash::hash(commitment.p2.to_string().as_bytes());
+        // TODO: Need to get the priv key from
 
+        let commitment = sha256::Hash::hash("".as_bytes());
         let mut matched_peers = vec![];
         for peer in matching_offers.iter_mut() {
             //debug!("Peer: {:?} Offer: {:?}", peer.0, peer.1);

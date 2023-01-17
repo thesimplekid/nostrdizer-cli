@@ -2,6 +2,7 @@ use super::utils::{get_eligible_balance, get_input_value, get_output_value};
 
 use crate::{
     errors::Error,
+    maker::Maker,
     types::{BlockchainConfig, Fill, IoAuth, MakerConfig, VerifyCJInfo},
     utils::send_signed_psbt,
 };
@@ -17,14 +18,6 @@ use bitcoin_hashes::sha256;
 use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 
 use std::str::FromStr;
-
-pub struct Maker {
-    pub identity: Identity,
-    pub config: MakerConfig,
-    pub nostr_client: NostrClient,
-    pub rpc_client: RPCClient,
-    pub fill_commitment: Option<sha256::Hash>,
-}
 
 impl Maker {
     pub fn new(
@@ -165,7 +158,7 @@ impl Maker {
     /// Maker sign psbt
     pub fn sign_psbt(
         &mut self,
-        unsigned_psbt: &PartiallySignedTransaction,
+        unsigned_psbt: PartiallySignedTransaction,
     ) -> Result<PartiallySignedTransaction, Error> {
         let signed_psbt = self.rpc_client.wallet_process_psbt(
             &unsigned_psbt.to_string(),
