@@ -1,6 +1,5 @@
-use super::{
-    utils::sign_psbt,
-    utils::{get_eligible_balance, get_mining_fee, get_unspent},
+use super::utils::{
+    get_eligible_balance, get_input_value, get_mining_fee, get_output_value, get_unspent, sign_psbt,
 };
 use crate::{
     errors::Error,
@@ -12,7 +11,7 @@ use crate::{
 };
 
 use bitcoin::psbt::PartiallySignedTransaction;
-use bitcoin::{Amount, SignedAmount};
+use bitcoin::{Amount, Denomination, SignedAmount};
 use bitcoincore_rpc_json::FinalizePsbtResult;
 use nostr_rust::{keys::get_random_secret_key, nostr_client::Client as NostrClient, Identity};
 
@@ -272,24 +271,31 @@ impl Taker {
     pub fn verify_transaction(
         &mut self,
         psbt: &PartiallySignedTransaction,
-        sign_amount: &Amount,
+        send_amount: &Amount,
     ) -> Result<VerifyCJInfo, Error> {
-        // let decoded_transaction = self.rpc_client.decode_psbt(psbt).unwrap();
-        // let tx = decoded_transaction.tx;
-        //let (input_value, my_input_value) = get_input_value(tx.vin, &self.rpc_client)?;
-        //let (output_value, my_output_value) = get_output_value(tx.vout, &self.rpc_client)?;
-        /*
+        let decoded_transaction = self.rpc_client.decode_psbt(&psbt.to_string()).unwrap();
+        let tx = decoded_transaction.tx;
+        let (_input_value, my_input_value) = get_input_value(&tx.vin, &self.rpc_client)?;
+        let (_output_value, my_output_value) = get_output_value(&tx.vout, &self.rpc_client)?;
+
         let mining_fee = decoded_transaction
             .fee
             .unwrap_or(Amount::ZERO)
             .to_signed()?;
-            */
 
-        // TODO: this obviously does nothing
+        let maker_fee: SignedAmount =
+            my_input_value.to_signed()? - my_output_value.to_signed()? - mining_fee;
+        let abs_fee_check = maker_fee.lt(&self.config.cj_fee.abs_fee.to_signed()?);
+        let fee_as_percent = maker_fee.to_float_in(Denomination::Satoshi)
+            / send_amount.to_float_in(Denomination::Satoshi);
+
+        let rel_fee_check = fee_as_percent.lt(&self.config.cj_fee.rel_fee);
         Ok(VerifyCJInfo {
-            mining_fee: SignedAmount::ZERO,
-            maker_fee: SignedAmount::ZERO,
-            verifyed: true,
+            mining_fee,
+            maker_fee,
+            verifyed: abs_fee_check
+                && rel_fee_check
+                && mining_fee.lt(&self.config.mining_fee.abs_fee.to_signed()?),
         })
     }
 }

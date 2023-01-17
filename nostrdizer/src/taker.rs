@@ -10,14 +10,10 @@ use super::{
 
 use bdk::bitcoin::{psbt::PartiallySignedTransaction, Amount, Denomination};
 
-use bitcoin_hashes::{sha256, Hash};
-
 use log::debug;
 
 #[cfg(feature = "bitcoincore")]
 use crate::bitcoincore::taker::Taker;
-#[cfg(feature = "bitcoincore")]
-use bitcoincore_rpc::{Auth, Client as RPCClient, RpcApi};
 
 #[cfg(feature = "bdk")]
 use crate::bdk::taker::Taker;
@@ -250,10 +246,9 @@ impl Taker {
         matching_offers.retain(|o| unique_makers.contains(&o.maker));
 
         let mut last_peer = 0;
-        //let commitment = self.generate_podle()?;
-        //let commitment = commitment.commit; // sha256::Hash::hash(commitment.p2.to_string().as_bytes());
-        // TODO: Need to get the priv key from
-        let commitment = sha256::Hash::hash("".as_bytes());
+        let commitment = self.generate_podle()?;
+        let commitment = commitment.commit; // sha256::Hash::hash(commitment.p2.to_string().as_bytes());
+                                            // TODO: Need to get the priv key from
 
         let mut matched_peers = vec![];
         for peer in matching_offers.iter_mut() {

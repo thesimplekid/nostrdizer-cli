@@ -8,7 +8,7 @@ use nostrdizer::bitcoincore::{maker::Maker, taker::Taker};
 use log::{debug, error, warn, LevelFilter};
 use nostrdizer::{
     errors::Error as NostrdizerError,
-    types::{Amount, BitcoinCoreCredentials, BlockchainConfig, MakerConfig, Network, RpcInfo},
+    types::{Amount, BitcoinCoreCredentials, BlockchainConfig, MakerConfig},
 };
 
 #[cfg(feature = "bdk")]
@@ -279,9 +279,9 @@ fn main() -> Result<()> {
 
             println!("Waiting for peer inputs...");
             // Step 4: Send auth (!auth)
-            //let auth_commitment = taker.generate_podle()?;
-            //taker.send_auth_message(auth_commitment, matched_offers)?;
-            //debug!("Sent auth");
+            let auth_commitment = taker.generate_podle()?;
+            taker.send_auth_message(auth_commitment, matched_offers)?;
+            debug!("Sent auth");
 
             // Step 5: Receive maker inputs (!ioauth)
             // wait for responses from peers
@@ -316,8 +316,8 @@ fn main() -> Result<()> {
                     println!("Finalized transaction, broadcasting ...");
 
                     // Broadcast signed tx
-                    taker.broadcast_psbt(signed_psbt)?;
-                    // println!("TXID: {:?}", txid);
+                    let txid = taker.broadcast_psbt(signed_psbt)?;
+                    println!("TXID: {:?}", txid);
                 } else {
                     bail!("Transaction could not be verified")
                 }
@@ -418,9 +418,9 @@ fn main() -> Result<()> {
                 //maker.send_pubkey(&peer_pubkey)?;
 
                 // Step 4: Receives !auth
-                //let auth_commitment = maker.get_commitment_auth()?;
+                let auth_commitment = maker.get_commitment_auth()?;
                 // TODO: Handle errors
-                //maker.verify_podle(auth_commitment)?;
+                maker.verify_podle(auth_commitment)?;
 
                 // Step 5: sends (!ioauth)
                 let maker_input = maker.get_inputs(&fill_offer)?;

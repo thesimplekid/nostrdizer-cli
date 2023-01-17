@@ -136,10 +136,11 @@ pub fn verify_podle(
     let p2 = auth_commitment.p2;
     let sig = auth_commitment.sig;
     let e = auth_commitment.e;
-    // TODO: This should be the one previously provided in the FIll
     let commitment = auth_commitment.commit;
 
-    if sha256::Hash::hash(&p2.serialize()) != fill_commitment && commitment != fill_commitment {
+    let hash_p2 = sha256::Hash::hash(&p2.serialize());
+
+    if hash_p2 != fill_commitment && commitment != fill_commitment {
         return Err(Error::PodleCommitment);
     }
     debug!("First check passed");
